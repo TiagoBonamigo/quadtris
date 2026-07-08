@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Quadtris</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -190,6 +190,38 @@
   .toggle i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
     background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.3); transition: transform .15s; }
   .toggle[data-on="1"] i { transform: translateX(14px); }
+
+  /* ---- touch controls (mobile) ---- */
+  .touch-controls { display: none; grid-column: 1 / -1; flex-direction: column; gap: 8px; }
+  .touch-row { display: flex; gap: 8px; }
+  .touch-btn {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
+    min-height: 52px; background: var(--bg-2); border: 1px solid var(--line);
+    border-radius: 10px; color: var(--fg); font-size: 22px; font-weight: 600;
+    letter-spacing: 0.06em;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    touch-action: none; cursor: pointer;
+  }
+  .touch-btn:active { background: var(--bg-3); border-color: var(--accent); }
+  .touch-btn.small { font-size: 11px; letter-spacing: 0.1em; min-height: 40px; }
+
+  @media (pointer: coarse) {
+    .touch-controls { display: flex; padding: 2px 2px calc(4px + env(safe-area-inset-bottom, 0px)); }
+  }
+
+  @media (max-width: 900px) {
+    .middle { display: flex; flex-direction: column; min-height: 0; gap: 8px; }
+    .rail { display: none; }
+    .board-outer { flex: 1; min-height: 0; }
+    .header { padding: 4px 2px; }
+    .wordmark { font-size: 17px; letter-spacing: 0.14em; }
+    .tagline { display: none; }
+    .stats { gap: 16px; }
+    .stat-value { font-size: 18px; }
+    .stat-label { font-size: 9px; }
+    .footer { display: none; }
+    .frame { gap: 8px; }
+  }
 </style>
 </head>
 <body>
@@ -848,6 +880,25 @@ function buildShell() {
               </div>
             </div></section>
           </aside>
+
+          <div class="touch-controls" id="q-touch">
+            <div class="touch-row">
+              <button class="touch-btn small" data-act="boardCCW">◐</button>
+              <button class="touch-btn small" data-act="bomb"><span id="q-touch-bomb-label">BOMB</span></button>
+              <button class="touch-btn small" data-act="pause"><span id="q-touch-pause-label">PAUSE</span></button>
+              <button class="touch-btn small" data-act="boardCW">◑</button>
+            </div>
+            <div class="touch-row">
+              <button class="touch-btn" data-act="rotCCW">&#8634;</button>
+              <button class="touch-btn small" data-act="hardDrop">DROP</button>
+              <button class="touch-btn" data-act="rotCW">&#8635;</button>
+            </div>
+            <div class="touch-row">
+              <button class="touch-btn" id="q-touch-left">&larr;</button>
+              <button class="touch-btn" id="q-touch-down">&darr;</button>
+              <button class="touch-btn" id="q-touch-right">&rarr;</button>
+            </div>
+          </div>
         </div>
 
         <footer class="footer">
@@ -905,9 +956,12 @@ function buildShell() {
   el.pauseLabel = document.getElementById('q-pause-label');
   el.scale = document.getElementById('q-scale');
   el.boardOuter = document.getElementById('q-board-outer');
+  el.touchBombLabel = document.getElementById('q-touch-bomb-label');
+  el.touchPauseLabel = document.getElementById('q-touch-pause-label');
 
   wireEvents();
   wireSettings();
+  wireTouchControls();
   observeScale();
 }
 
@@ -1051,6 +1105,8 @@ function update() {
   el.pauseLabel.textContent = S.paused ? 'RESUME' : 'PAUSE';
   el.bombLabel.innerHTML = `BOMB &times;${S.bombs}`;
   el.bombBtn.style.opacity = S.bombs > 0 ? '1' : '0.4';
+  if (el.touchPauseLabel) el.touchPauseLabel.textContent = S.paused ? 'RESUME' : 'PAUSE';
+  if (el.touchBombLabel) el.touchBombLabel.innerHTML = `BOMB &times;${S.bombs}`;
   renderNext();
   renderCurrent();
   renderRotWrap();
@@ -1086,6 +1142,48 @@ function wireEvents() {
   window.addEventListener('keyup', (e) => {
     if (e.key === 'ArrowDown') { S.softDrop = false; scheduleLoop(); }
   });
+}
+
+// On-screen controls for touch devices. Left/right auto-repeat while held
+// (mirrors OS key-repeat on the keyboard) and the down button holds soft
+// drop for as long as it's pressed, like the ArrowDown key. Every other
+// touch button reuses the same [data-act] click wiring as the desktop
+// action buttons.
+function wireTouchControls() {
+  const bar = document.getElementById('q-touch');
+  if (!bar) return;
+
+  let holdTimer = null, repeatTimer = null;
+  const clearRepeat = () => { clearTimeout(holdTimer); clearInterval(repeatTimer); holdTimer = repeatTimer = null; };
+  const clearSoftDrop = () => { if (S.softDrop) { S.softDrop = false; scheduleLoop(); } };
+
+  const attachRepeat = (id, kind) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      clearRepeat();
+      action(kind);
+      holdTimer = setTimeout(() => { repeatTimer = setInterval(() => action(kind), 60); }, 220);
+    });
+  };
+  attachRepeat('q-touch-left', 'left');
+  attachRepeat('q-touch-right', 'right');
+
+  const downBtn = document.getElementById('q-touch-down');
+  if (downBtn) {
+    downBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (!S.softDrop) { S.softDrop = true; scheduleLoop(); }
+    });
+  }
+
+  // Safety net: releasing a pointer anywhere stops whichever hold-to-repeat
+  // action is active, so a finger sliding off a button can't leave it stuck.
+  window.addEventListener('pointerup', () => { clearRepeat(); clearSoftDrop(); });
+  window.addEventListener('pointercancel', () => { clearRepeat(); clearSoftDrop(); });
+
+  bar.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 function observeScale() {
