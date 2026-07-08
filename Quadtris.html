@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quadtris</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        oklch(0.16 0.012 250);
+    --bg-2:      oklch(0.21 0.016 250);
+    --bg-3:      oklch(0.26 0.018 250);
+    --line:      oklch(0.32 0.020 250);
+    --line-soft: oklch(0.24 0.014 250);
+    --fg:        oklch(0.96 0.008 250);
+    --fg-2:      oklch(0.78 0.014 250);
+    --fg-mute:   oklch(0.55 0.018 250);
+    --accent:    oklch(0.78 0.14 200);
+    --warn:      oklch(0.78 0.16 30);
+    --core:      oklch(0.90 0.05 80);
+    --core-2:    oklch(0.80 0.07 80);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-feature-settings: "ss01", "ss02";
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  #root { width: 100%; height: 100%; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  button { font-family: inherit; }
+  ::selection { background: var(--accent); color: var(--bg); }
+
+  @keyframes q-rotate-cw  { from { transform: rotate(0deg); }   to { transform: rotate(90deg);  } }
+  @keyframes q-rotate-ccw { from { transform: rotate(0deg); }   to { transform: rotate(-90deg); } }
+  .q-rot-cw  { animation: q-rotate-cw  320ms cubic-bezier(0.7, 0, 0.3, 1) forwards; }
+  .q-rot-ccw { animation: q-rotate-ccw 320ms cubic-bezier(0.7, 0, 0.3, 1) forwards; }
+
+  /* ---- layout ---- */
+  .app {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+    background: radial-gradient(circle at 50% 40%, oklch(0.22 0.022 250) 0%, var(--bg) 65%);
+  }
+  .frame {
+    width: 100%; max-width: 1280px; height: 100%; max-height: 920px;
+    display: flex; flex-direction: column; gap: 12px; min-height: 0;
+  }
+
+  /* header */
+  .header { display: flex; justify-content: space-between; align-items: center; padding: 8px 4px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .wordmark { font-size: 22px; font-weight: 700; letter-spacing: 0.18em; }
+  .tagline { font-size: 11px; color: var(--fg-mute); letter-spacing: 0.16em; text-transform: uppercase; margin-top: 2px; }
+  .stats { display: flex; gap: 28px; }
+  .stat { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .stat-label { font-size: 10px; letter-spacing: 0.22em; color: var(--fg-mute); }
+  .stat-value { font-size: 24px; font-weight: 500; }
+
+  /* middle */
+  .middle {
+    flex: 1; display: grid;
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(200px, 240px);
+    gap: 16px; min-height: 0;
+  }
+  .rail { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; overflow: auto; }
+  .panel {
+    background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: 8px;
+    padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .panel-title { font-size: 10px; letter-spacing: 0.22em; color: var(--fg-mute); }
+  .panel-body { display: flex; flex-direction: column; gap: 8px; }
+
+  .preview-box {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 8px 6px; background: var(--bg);
+    border: 1px solid var(--line-soft); border-radius: 6px;
+  }
+  .piece-tag {
+    font-size: 10px; letter-spacing: 0.18em; padding: 2px 8px;
+    border: 1px solid; border-radius: 4px; align-self: flex-start;
+  }
+  .kicker { font-size: 9px; letter-spacing: 0.22em; color: var(--fg-mute); }
+  .from-val { font-size: 13px; color: var(--fg); letter-spacing: 0.10em; }
+  .current-row { display: flex; align-items: center; gap: 14px; }
+  .placeholder { color: var(--fg-mute); text-align: center; padding: 10px 0; font-size: 14px; }
+
+  .hint { font-size: 12px; line-height: 1.55; color: var(--fg-2); }
+  .hint strong { color: var(--fg); }
+
+  .controls { display: flex; flex-direction: column; gap: 4px; }
+  .ctrl-row { display: flex; justify-content: space-between; font-size: 12px; padding: 3px 0; }
+  .ctrl-k { color: var(--fg-2); }
+  .ctrl-v { color: var(--fg); }
+
+  .actions-col { display: flex; flex-direction: column; gap: 6px; }
+  .big-btn {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 12px; background: var(--bg-2);
+    border: 1px solid var(--line); border-radius: 6px;
+    color: var(--fg); cursor: pointer; font-size: 12px; letter-spacing: 0.16em;
+    transition: background 100ms linear;
+  }
+  .big-btn:hover { background: var(--bg-3); }
+  .big-btn-label { font-weight: 500; }
+  .big-btn-sub { font-size: 10px; color: var(--fg-mute); letter-spacing: 0.16em; }
+
+  /* board */
+  .board-outer {
+    position: relative; display: flex; align-items: center; justify-content: center;
+    min-width: 0; min-height: 0; width: 100%; height: 100%; overflow: hidden;
+  }
+  .board {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+    position: relative;
+    box-shadow: 0 18px 48px rgba(0,0,0,0.4), inset 0 0 0 1px rgba(255,255,255,0.02);
+  }
+  .q-grid { display: grid; gap: 2px; }
+  .arrows-layer { position: absolute; inset: 0; pointer-events: none; }
+  .arrow { position: absolute; transition: opacity 200ms ease; }
+  .arrow-glyph { font-size: 22px; font-weight: 700; text-shadow: 0 0 12px currentColor; }
+
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.55); backdrop-filter: blur(4px); border-radius: 12px;
+  }
+  .overlay-inner {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 28px 36px; background: var(--bg-2);
+    border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  .overlay-title { font-size: 28px; font-weight: 700; letter-spacing: 0.22em; }
+  .overlay-sub { font-size: 12px; color: var(--fg-mute); letter-spacing: 0.18em; }
+  .overlay-btn {
+    margin-top: 8px; padding: 10px 22px; background: var(--accent); color: var(--bg);
+    border: none; border-radius: 5px; font-size: 13px; font-weight: 600; letter-spacing: 0.18em; cursor: pointer;
+  }
+
+  .footer {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 10px; color: var(--fg-mute); letter-spacing: 0.16em; padding: 0 4px;
+  }
+  .footer-cell { text-transform: uppercase; }
+  .footer-btn {
+    background: none; border: none; color: var(--fg-mute); cursor: pointer;
+    font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; padding: 0;
+  }
+  .footer-btn:hover { color: var(--fg-2); }
+
+  /* settings panel */
+  .settings {
+    position: fixed; right: 16px; bottom: 16px; z-index: 50; width: 280px;
+    background: var(--bg-2); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    padding: 14px; display: none; flex-direction: column; gap: 12px;
+  }
+  .settings.open { display: flex; }
+  .settings-hd { display: flex; align-items: center; justify-content: space-between; }
+  .settings-hd b { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; }
+  .settings-x {
+    appearance: none; border: 0; background: transparent; color: var(--fg-mute);
+    width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font-size: 14px;
+  }
+  .settings-x:hover { background: rgba(255,255,255,0.06); color: var(--fg); }
+  .set-sect { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-mute); padding-top: 4px; }
+  .set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
+  .set-row label { color: var(--fg-2); }
+  .set-row .val { color: var(--fg-mute); font-variant-numeric: tabular-nums; }
+  .set-field {
+    appearance: none; height: 28px; padding: 0 8px; min-width: 0;
+    border: 1px solid var(--line); border-radius: 7px;
+    background: var(--bg); color: var(--fg); font: inherit; font-size: 12px; outline: none;
+  }
+  .set-row input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .toggle {
+    position: relative; width: 34px; height: 20px; border: 0; border-radius: 999px;
+    background: var(--line); cursor: pointer; padding: 0; transition: background .15s; flex-shrink: 0;
+  }
+  .toggle[data-on="1"] { background: var(--accent); }
+  .toggle i { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.3); transition: transform .15s; }
+  .toggle[data-on="1"] i { transform: translateX(14px); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+"use strict";
+// ===================================================================
+// Quadtris — center-out tetromino game.
+// Grid: 25x25. Center 3x3 (the immutable "core"). Rings are concentric
+// squares around the core; complete a full ring to clear it.
+// Pure game logic below is framework-free; the UI is plain DOM.
+// ===================================================================
+
+const SIZE = 25;
+const CENTER = 12;
+const N_RINGS = 11;
+
+const PIECE_COLORS = {
+  I: 'oklch(0.78 0.14 215)', // cyan
+  O: 'oklch(0.84 0.14 95)',  // yellow
+  T: 'oklch(0.70 0.18 320)', // magenta
+  S: 'oklch(0.78 0.16 150)', // green
+  Z: 'oklch(0.70 0.18 25)',  // red
+  L: 'oklch(0.78 0.16 60)',  // orange
+  J: 'oklch(0.68 0.16 260)', // blue
+};
+
+const PIECE_SHAPES = {
+  I: [[0,0],[0,1],[0,2],[0,3]],
+  O: [[0,0],[0,1],[1,0],[1,1]],
+  T: [[0,0],[0,1],[0,2],[1,1]],
+  L: [[0,0],[0,1],[0,2],[1,0]],
+  J: [[0,0],[0,1],[0,2],[1,2]],
+  S: [[0,1],[0,2],[1,0],[1,1]],
+  Z: [[0,0],[0,1],[1,1],[1,2]],
+};
+
+const PIECE_TYPES = Object.keys(PIECE_SHAPES);
+
+const DELTAS = {
+  N: [ 1,  0],  // entering from north -> moves south (row +1)
+  S: [-1,  0],
+  W: [ 0,  1],
+  E: [ 0, -1],
+};
+
+const DIR_CW  = { N: 'E', E: 'S', S: 'W', W: 'N' };
+const DIR_CCW = { N: 'W', W: 'S', S: 'E', E: 'N' };
+
+function ringOf(r, c) {
+  const d = Math.max(Math.abs(r - CENTER), Math.abs(c - CENTER));
+  return d <= 1 ? 0 : d - 1;
+}
+function isCenter(r, c) { return ringOf(r, c) === 0; }
+function inBounds(r, c) { return r >= 0 && r < SIZE && c >= 0 && c < SIZE; }
+
+function emptyGrid() {
+  return Array.from({length: SIZE}, () => Array.from({length: SIZE}, () => null));
+}
+function cloneGrid(g) { return g.map(row => row.slice()); }
+
+// --- piece transforms ---------------------------------------------------
+function normalize(cells) {
+  let minR = Infinity, minC = Infinity;
+  for (const [r, c] of cells) { if (r < minR) minR = r; if (c < minC) minC = c; }
+  return cells.map(([r, c]) => [r - minR, c - minC]);
+}
+function rotateShapeCW(cells)  { return normalize(cells.map(([r, c]) => [c, -r])); }
+
+function spawnPiece(type, dir) {
+  let shape = PIECE_SHAPES[type].map(c => c.slice());
+  let rots = 0;
+  if (dir === 'E') rots = 1;
+  else if (dir === 'S') rots = 2;
+  else if (dir === 'W') rots = 3;
+  for (let i = 0; i < rots; i++) shape = rotateShapeCW(shape);
+
+  const rows = shape.map(c => c[0]);
+  const cols = shape.map(c => c[1]);
+  const h = Math.max(...rows) + 1;
+  const w = Math.max(...cols) + 1;
+
+  let originR, originC;
+  if (dir === 'N')      { originR = -h;    originC = CENTER - Math.floor((w - 1) / 2); }
+  else if (dir === 'S') { originR = SIZE;  originC = CENTER - Math.floor((w - 1) / 2); }
+  else if (dir === 'W') { originR = CENTER - Math.floor((h - 1) / 2); originC = -w; }
+  else                  { originR = CENTER - Math.floor((h - 1) / 2); originC = SIZE; }
+
+  const cells = shape.map(([r, c]) => [r + originR, c + originC]);
+  return { type, color: PIECE_COLORS[type], cells, dir };
+}
+
+function rotatePieceCells(cells, cw) {
+  const [pr, pc] = cells[1] || cells[0];
+  return cells.map(([r, c]) => {
+    const dr = r - pr, dc = c - pc;
+    return cw ? [pr + dc, pc - dr] : [pr - dc, pc + dr];
+  });
+}
+
+// --- collision / locking ------------------------------------------------
+function isPieceValid(cells, grid, dir) {
+  for (const [r, c] of cells) {
+    if (isCenter(r, c)) return false;
+    if (inBounds(r, c) && grid[r][c]) return false;
+    if (dir === 'N' || dir === 'S') {
+      if (c < 0 || c >= SIZE) return false;
+    } else {
+      if (r < 0 || r >= SIZE) return false;
+    }
+    if (dir === 'N' && r >= SIZE) return false;
+    if (dir === 'S' && r < 0) return false;
+    if (dir === 'W' && c >= SIZE) return false;
+    if (dir === 'E' && c < 0) return false;
+  }
+  return true;
+}
+
+function movePiece(piece, dr, dc) {
+  return { ...piece, cells: piece.cells.map(([r, c]) => [r + dr, c + dc]) };
+}
+function pieceStep(piece) {
+  const [dr, dc] = DELTAS[piece.dir];
+  return movePiece(piece, dr, dc);
+}
+function tryRotatePiece(piece, grid, cw) {
+  const rotated = rotatePieceCells(piece.cells, cw);
+  const candidate = { ...piece, cells: rotated };
+  const kicks = [
+    [0, 0], [0, 1], [0, -1], [1, 0], [-1, 0],
+    [0, 2], [0, -2], [2, 0], [-2, 0],
+  ];
+  for (const [dr, dc] of kicks) {
+    const c2 = candidate.cells.map(([r, c]) => [r + dr, c + dc]);
+    if (isPieceValid(c2, grid, piece.dir)) return { ...candidate, cells: c2 };
+  }
+  return piece;
+}
+function tryShiftPiece(piece, grid, lateral) {
+  let dr = 0, dc = 0;
+  if (piece.dir === 'N' || piece.dir === 'S') dc = lateral;
+  else dr = lateral;
+  const moved = movePiece(piece, dr, dc);
+  return isPieceValid(moved.cells, grid, piece.dir) ? moved : piece;
+}
+function lockPiece(piece, grid) {
+  const g = cloneGrid(grid);
+  let off = false;
+  for (const [r, c] of piece.cells) {
+    if (!inBounds(r, c)) { off = true; continue; }
+    g[r][c] = piece.color;
+  }
+  return { grid: g, gameOver: off };
+}
+
+// --- rings --------------------------------------------------------------
+function ringCells(k) {
+  const d = k + 1;
+  const out = [];
+  for (let r = CENTER - d; r <= CENTER + d; r++) {
+    for (let c = CENTER - d; c <= CENTER + d; c++) {
+      if (Math.max(Math.abs(r - CENTER), Math.abs(c - CENTER)) === d) {
+        if (inBounds(r, c)) out.push([r, c]);
+      }
+    }
+  }
+  return out;
+}
+function findCompleteRings(grid) {
+  const rings = [];
+  for (let k = 1; k <= N_RINGS; k++) {
+    const cells = ringCells(k);
+    if (cells.every(([r, c]) => grid[r][c])) rings.push(k);
+  }
+  return rings;
+}
+function clearRings(grid, rings) {
+  const g = cloneGrid(grid);
+  for (const k of rings) {
+    for (const [r, c] of ringCells(k)) g[r][c] = null;
+  }
+  return g;
+}
+
+// --- connectivity -------------------------------------------------------
+// A locked piece is legal only if it is joined to the solid core through a
+// chain of filled cells (4-connectivity). Flood-fill outward from the core
+// over filled cells; the piece is connected if any of its cells is reached.
+function isConnectedToCore(grid, cells) {
+  const seen = Array.from({ length: SIZE }, () => new Array(SIZE).fill(false));
+  const stack = [];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (isCenter(r, c)) { seen[r][c] = true; stack.push([r, c]); }
+  }
+  const filled = (r, c) => inBounds(r, c) && (isCenter(r, c) || !!grid[r][c]);
+  const nbrs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  while (stack.length) {
+    const [r, c] = stack.pop();
+    for (const [dr, dc] of nbrs) {
+      const nr = r + dr, nc = c + dc;
+      if (inBounds(nr, nc) && !seen[nr][nc] && filled(nr, nc)) { seen[nr][nc] = true; stack.push([nr, nc]); }
+    }
+  }
+  return cells.some(([r, c]) => inBounds(r, c) && seen[r][c]);
+}
+
+// --- collapse toward center --------------------------------------------
+// After a ring clears, every remaining cell is attracted to the 3x3 core.
+// Cells sharing the core's row/column band (the four "cross" arms) slide
+// straight inward; off-axis cells (the diagonal quadrants) move diagonally
+// until they enter an arm, then slide straight. A cell stops when it hits a
+// filled cell or the solid core. Resolved per-phase (all straight moves,
+// then all diagonal moves), innermost-ring first and clockwise from the top.
+// Returns the settled grid plus each moved cell's path (for the animation).
+function inCoreBand(v) { return v >= CENTER - 1 && v <= CENTER + 1; }
+function isCrossCell(r, c) { return !isCenter(r, c) && (inCoreBand(r) || inCoreBand(c)); }
+function isDiagCell(r, c)  { return !isCenter(r, c) && !inCoreBand(r) && !inCoreBand(c); }
+function solidAt(g, r, c)  { return !inBounds(r, c) || isCenter(r, c) || !!g[r][c]; }
+
+// Straight direction toward the core for a cell sitting in one of the arms.
+function armDir(r, c) {
+  if (inCoreBand(c)) return [Math.sign(CENTER - r), 0]; // N/S arm -> vertical
+  return [0, Math.sign(CENTER - c)];                    // E/W arm -> horizontal
+}
+
+// Ordering: innermost ring first, then clockwise starting from the top.
+function clockAngle(r, c) {
+  let a = Math.atan2(c - CENTER, CENTER - r); // 0 at top, increasing clockwise
+  if (a < 0) a += Math.PI * 2;
+  return a;
+}
+function collapseOrder(a, b) {
+  const ra = ringOf(a[0], a[1]), rb = ringOf(b[0], b[1]);
+  if (ra !== rb) return ra - rb;
+  return clockAngle(a[0], a[1]) - clockAngle(b[0], b[1]);
+}
+
+function computeCollapse(grid) {
+  const g = cloneGrid(grid);
+  const paths = [];
+  const record = (path, color) => { if (path.length > 1) paths.push({ color, path }); };
+
+  // Phase 1 — straight gravity within the cross arms.
+  const crossCells = [];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (g[r][c] && isCrossCell(r, c)) crossCells.push([r, c]);
+  }
+  crossCells.sort(collapseOrder);
+  for (const [r0, c0] of crossCells) {
+    const color = g[r0][c0];
+    if (!color) continue;
+    const [dr, dc] = armDir(r0, c0);
+    g[r0][c0] = null;
+    let nr = r0, nc = c0;
+    const path = [[nr, nc]];
+    while (!solidAt(g, nr + dr, nc + dc)) { nr += dr; nc += dc; path.push([nr, nc]); }
+    g[nr][nc] = color;
+    record(path, color);
+  }
+
+  // Phase 2 — diagonal approach until aligned, then straight to rest.
+  const diagCells = [];
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (g[r][c] && isDiagCell(r, c)) diagCells.push([r, c]);
+  }
+  diagCells.sort(collapseOrder);
+  for (const [r0, c0] of diagCells) {
+    const color = g[r0][c0];
+    if (!color) continue;
+    g[r0][c0] = null;
+    let nr = r0, nc = c0;
+    const path = [[nr, nc]];
+    const ddr = Math.sign(CENTER - nr), ddc = Math.sign(CENTER - nc);
+    // Diagonal: stop on alignment with an arm, or when blocked (stays off-axis).
+    while (!inCoreBand(nr) && !inCoreBand(nc) && !solidAt(g, nr + ddr, nc + ddc)) {
+      nr += ddr; nc += ddc; path.push([nr, nc]);
+    }
+    // Straight: only if it actually reached an arm.
+    if (inCoreBand(nr) || inCoreBand(nc)) {
+      const [sdr, sdc] = armDir(nr, nc);
+      while (!solidAt(g, nr + sdr, nc + sdc)) { nr += sdr; nc += sdc; path.push([nr, nc]); }
+    }
+    g[nr][nc] = color;
+    record(path, color);
+  }
+
+  return { grid: g, paths };
+}
+
+// --- board rotation -----------------------------------------------------
+function rotateGridCW(grid) {
+  const g = emptyGrid();
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (grid[r][c]) g[c][SIZE - 1 - r] = grid[r][c];
+  }
+  return g;
+}
+function rotateGridCCW(grid) {
+  const g = emptyGrid();
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (grid[r][c]) g[SIZE - 1 - c][r] = grid[r][c];
+  }
+  return g;
+}
+
+// --- bag randomizer -----------------------------------------------------
+function newBag() {
+  const a = PIECE_TYPES.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// ===================================================================
+// Presentation constants
+// ===================================================================
+const CELL_PX = 24;
+const GAP_PX = 2;
+const BOARD_PX = SIZE * CELL_PX + (SIZE - 1) * GAP_PX; // 648
+const NATIVE = BOARD_PX + 72;                          // 720
+
+const SPEEDS = { Chill: 750, Medium: 520, Brisk: 380, Fast: 260 };
+const DIR_ARROW = { N: '↓', S: '↑', W: '→', E: '←' };
+
+// ===================================================================
+// Settings (replaces the design-tool tweaks harness)
+// ===================================================================
+const SETTINGS_DEFAULTS = { speed: 'Medium', showHint: true, softDropMult: 6, showRings: true };
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem('quadtris.settings');
+    if (raw) return { ...SETTINGS_DEFAULTS, ...JSON.parse(raw) };
+  } catch (e) {}
+  return { ...SETTINGS_DEFAULTS };
+}
+function saveSettings(s) {
+  try { localStorage.setItem('quadtris.settings', JSON.stringify(s)); } catch (e) {}
+}
+
+// ===================================================================
+// Game state + controller
+// ===================================================================
+const S = {
+  grid: emptyGrid(),
+  piece: null,
+  bag: newBag(),
+  nextType: null,
+  nextSide: null,
+  score: 0,
+  ringsCleared: 0,
+  level: 1,
+  paused: false,
+  gameOver: false,
+  flash: null,     // { rings: [k] }
+  softDrop: false,
+  rotating: null,  // { dir: 'cw' | 'ccw' }
+  collapsing: null, // { finals: Set<"r,c"> } while the collapse animation plays
+  bombs: 3,        // column-bomb charges
+  settings: loadSettings(),
+};
+
+const BOMB_START = 3;
+const BOMB_MAX = 5;
+const BOMB_EVERY_RINGS = 5;
+
+let loopId = null;
+
+function ghostPiece() {
+  if (!S.piece || !S.settings.showHint) return null;
+  let p = S.piece;
+  while (true) {
+    const next = pieceStep(p);
+    if (isPieceValid(next.cells, S.grid, p.dir)) p = next; else break;
+  }
+  return p;
+}
+
+function drawNext(curBag) {
+  let b = curBag.slice();
+  if (b.length === 0) b = newBag();
+  const type = b.shift();
+  return { type, side: 'N', bag: b };
+}
+
+function spawnFromQueue() {
+  let type = S.nextType, side = S.nextSide || 'N', b = S.bag;
+  if (!type) { const d = drawNext(b); type = d.type; side = d.side; b = d.bag; }
+  const p = spawnPiece(type, side);
+  const d2 = drawNext(b);
+  S.bag = d2.bag;
+  S.nextType = d2.type;
+  S.nextSide = d2.side;
+  if (!isPieceValid(p.cells, S.grid, p.dir)) {
+    S.gameOver = true;
+    S.piece = null;
+    update();
+    return;
+  }
+  S.piece = p;
+  update();
+}
+
+function lockAndClear(p) {
+  const { grid: locked, gameOver: over } = lockPiece(p, S.grid);
+  if (over) { S.grid = locked; S.piece = null; S.gameOver = true; update(); return; }
+  // A piece that locks without a chain of filled cells back to the core is
+  // illegal ("build outward from the core") -> game over.
+  const pieceCells = p.cells.filter(([r, c]) => inBounds(r, c));
+  if (!isConnectedToCore(locked, pieceCells)) {
+    S.grid = locked; S.piece = null; S.gameOver = true; update(); return;
+  }
+  const rings = findCompleteRings(locked);
+  if (rings.length > 0) {
+    S.flash = { rings };
+    S.grid = locked;
+    S.piece = null;
+    update();
+    setTimeout(() => {
+      const cleared = clearRings(locked, rings);
+      const { grid: finalGrid, paths } = computeCollapse(cleared);
+      S.flash = null;
+      const gained = rings.reduce((s, k) => s + 100 * k, 0) * (rings.length > 1 ? 2 : 1);
+      S.score += gained + 10;
+      const oldRings = S.ringsCleared;
+      S.ringsCleared += rings.length;
+      S.level = 1 + Math.floor(S.ringsCleared / 4);
+      // Earn a bomb charge every few rings cleared.
+      const earned = Math.floor(S.ringsCleared / BOMB_EVERY_RINGS) - Math.floor(oldRings / BOMB_EVERY_RINGS);
+      if (earned > 0) S.bombs = Math.min(BOMB_MAX, S.bombs + earned);
+      runCollapseAnimation(cleared, finalGrid, paths, () => spawnFromQueue());
+    }, 320);
+  } else {
+    S.grid = locked;
+    S.score += 10;
+    S.piece = null;
+    spawnFromQueue();
+  }
+}
+
+// Animate the center-attraction collapse: moving cells slide along their
+// recorded straight/diagonal paths at a uniform speed; the longest path
+// defines a short, fast total duration. Static cells are drawn normally by
+// the board layer (moving cells are skipped there and drawn on the overlay).
+function runCollapseAnimation(startGrid, finalGrid, paths, onDone) {
+  if (!paths.length) { S.grid = finalGrid; S.collapsing = null; update(); onDone(); return; }
+
+  const finals = new Set(paths.map(m => { const p = m.path[m.path.length - 1]; return `${p[0]},${p[1]}`; }));
+  S.collapsing = { finals };
+  S.grid = finalGrid;
+  update();
+
+  const layer = el.collapse;
+  layer.innerHTML = '';
+  const PITCH = CELL_PX + GAP_PX;
+  let maxSteps = 1;
+  for (const m of paths) maxSteps = Math.max(maxSteps, m.path.length - 1);
+  const total = Math.max(160, Math.min(340, maxSteps * 22)); // fast, bounded
+
+  for (const m of paths) {
+    const [r0, c0] = m.path[0];
+    const div = document.createElement('div');
+    div.style.cssText = `position:absolute;left:${c0 * PITCH}px;top:${r0 * PITCH}px;`
+      + `width:${CELL_PX}px;height:${CELL_PX}px;background:${m.color};`
+      + `border:1px solid rgba(255,255,255,0.12);border-radius:4px;will-change:transform;`;
+    layer.appendChild(div);
+    const steps = m.path.length - 1;
+    const frames = m.path.map((pt, i) => ({
+      transform: `translate(${(pt[1] - c0) * PITCH}px, ${(pt[0] - r0) * PITCH}px)`,
+      offset: steps ? i / steps : 1,
+    }));
+    if (div.animate) {
+      div.animate(frames, { duration: total * (steps / maxSteps), easing: 'linear', fill: 'forwards' });
+    } else {
+      div.style.transform = frames[frames.length - 1].transform;
+    }
+  }
+
+  setTimeout(() => {
+    layer.innerHTML = '';
+    S.collapsing = null;
+    S.grid = finalGrid;
+    onDone();
+  }, total + 40);
+}
+
+function tick() {
+  if (!S.piece || S.paused || S.gameOver) return;
+  const moved = pieceStep(S.piece);
+  if (isPieceValid(moved.cells, S.grid, S.piece.dir)) { S.piece = moved; update(); }
+  else lockAndClear(S.piece);
+}
+
+function scheduleLoop() {
+  if (loopId) { clearInterval(loopId); loopId = null; }
+  if (S.paused || S.gameOver || !S.piece || S.flash || S.rotating || S.collapsing) return;
+  const base = SPEEDS[S.settings.speed] || 520;
+  const lvlScale = Math.pow(0.92, S.level - 1);
+  const interval = Math.max(80, base * lvlScale / (S.softDrop ? S.settings.softDropMult : 1));
+  loopId = setInterval(tick, interval);
+}
+
+function action(kind) {
+  if (S.gameOver) return;
+  if (kind === 'pause') { S.paused = !S.paused; update(); return; }
+  if (S.paused || !S.piece || S.rotating || S.collapsing) return;
+
+  if (kind === 'left')        { S.piece = tryShiftPiece(S.piece, S.grid, -1); update(); }
+  else if (kind === 'right')  { S.piece = tryShiftPiece(S.piece, S.grid,  1); update(); }
+  else if (kind === 'rotCW')  { S.piece = tryRotatePiece(S.piece, S.grid, true);  update(); }
+  else if (kind === 'rotCCW') { S.piece = tryRotatePiece(S.piece, S.grid, false); update(); }
+  else if (kind === 'hardDrop') {
+    let p = S.piece;
+    while (true) {
+      const next = pieceStep(p);
+      if (isPieceValid(next.cells, S.grid, p.dir)) p = next; else break;
+    }
+    lockAndClear(p);
+  }
+  else if (kind === 'bomb') {
+    if (S.collapsing || S.flash || S.bombs <= 0) return;
+    const col = bombColumn(S.piece);
+    const g = cloneGrid(S.grid);
+    let removed = 0;
+    for (let r = 0; r < SIZE; r++) {
+      if (!isCenter(r, col) && g[r][col]) { g[r][col] = null; removed++; }
+    }
+    if (removed === 0) return; // nothing to blast — don't waste a charge
+    S.bombs -= 1;
+    const { grid: finalGrid, paths } = computeCollapse(g);
+    // Re-collapse toward the core, then resume the current piece.
+    runCollapseAnimation(g, finalGrid, paths, () => {
+      if (S.piece && !isPieceValid(S.piece.cells, S.grid, S.piece.dir)) {
+        S.piece = null; spawnFromQueue();
+      } else {
+        update();
+      }
+    });
+  }
+  else if (kind === 'boardCW' || kind === 'boardCCW') {
+    const cw = kind === 'boardCW';
+    const newGrid = cw ? rotateGridCW(S.grid) : rotateGridCCW(S.grid);
+    if (S.piece && !isPieceValid(S.piece.cells, newGrid, 'N')) return;
+    S.rotating = { dir: cw ? 'cw' : 'ccw' };
+    S.score = Math.max(0, S.score - 2);
+    update();
+    setTimeout(() => {
+      S.grid = newGrid;
+      S.rotating = null;
+      update();
+    }, 320);
+  }
+}
+
+function restart() {
+  S.grid = emptyGrid();
+  S.piece = null;
+  S.bag = newBag();
+  S.nextType = null;
+  S.nextSide = null;
+  S.score = 0;
+  S.ringsCleared = 0;
+  S.level = 1;
+  S.paused = false;
+  S.gameOver = false;
+  S.flash = null;
+  S.rotating = null;
+  S.collapsing = null;
+  S.bombs = BOMB_START;
+  if (el.collapse) el.collapse.innerHTML = '';
+  spawnFromQueue();
+}
+
+// ===================================================================
+// Rendering (plain DOM)
+// ===================================================================
+const el = {}; // cached element refs
+
+function gridStyle(topLeft) {
+  const off = topLeft ? 'top:0;left:0;' : 'top:8px;left:8px;';
+  return `position:absolute;${off}width:${BOARD_PX}px;height:${BOARD_PX}px;`
+       + `display:grid;grid-template-columns:repeat(${SIZE},${CELL_PX}px);`
+       + `grid-template-rows:repeat(${SIZE},${CELL_PX}px);gap:${GAP_PX}px;`;
+}
+
+function buildShell() {
+  const root = document.getElementById('root');
+  root.innerHTML = `
+    <div class="app">
+      <div class="frame">
+        <header class="header">
+          <div class="brand">
+            <svg width="34" height="34" viewBox="0 0 34 34" style="display:block">
+              <rect x="2"  y="2"  width="30" height="30" rx="3" fill="none" stroke="var(--fg-mute)" stroke-width="1.5"/>
+              <rect x="7"  y="7"  width="20" height="20" rx="2" fill="none" stroke="var(--fg-2)"    stroke-width="1.5"/>
+              <rect x="12" y="12" width="10" height="10" rx="1.5" fill="var(--core)"/>
+            </svg>
+            <div>
+              <div class="wordmark">QUADTRIS</div>
+              <div class="tagline">build outward &middot; clear the rings</div>
+            </div>
+          </div>
+          <div class="stats">
+            <div class="stat"><div class="stat-label">SCORE</div><div class="mono stat-value" id="q-score">000000</div></div>
+            <div class="stat"><div class="stat-label">RINGS</div><div class="mono stat-value" id="q-rings">00</div></div>
+            <div class="stat"><div class="stat-label">LEVEL</div><div class="mono stat-value" id="q-level">01</div></div>
+          </div>
+        </header>
+
+        <div class="middle">
+          <aside class="rail">
+            <section class="panel"><div class="panel-title">NEXT</div><div class="panel-body" id="q-next"></div></section>
+            <section class="panel"><div class="panel-title">CURRENT</div><div class="panel-body" id="q-current"></div></section>
+            <section class="panel"><div class="panel-title">HINT</div><div class="panel-body">
+              <div class="hint">Pieces fall from <strong>above</strong> &mdash; every locked piece must stay <strong>connected to the core</strong>, or it's game over.
+              Complete a concentric square to clear it; the remaining cells are then <strong>pulled back toward the core</strong>.</div>
+            </div></section>
+          </aside>
+
+          <div class="board-outer" id="q-board-outer">
+            <div id="q-scale" style="width:${NATIVE}px;height:${NATIVE}px;transform-origin:center center;position:relative;display:flex;align-items:center;justify-content:center;">
+              <div style="position:relative;width:${BOARD_PX + 16}px;height:${BOARD_PX + 16}px;">
+                <div class="arrows-layer" id="q-arrows"></div>
+                <div class="board" style="width:${BOARD_PX + 16}px;height:${BOARD_PX + 16}px;position:relative;">
+                  <div class="q-grid" id="q-bg" style="${gridStyle(false)}"></div>
+                  <div id="q-bombaim" style="position:absolute;top:8px;width:${CELL_PX}px;height:${BOARD_PX}px;background:var(--warn);opacity:0.16;border-radius:3px;pointer-events:none;display:none;"></div>
+                  <div id="q-rotwrap" style="position:absolute;top:8px;left:8px;width:${BOARD_PX}px;height:${BOARD_PX}px;pointer-events:none;transform-origin:center center;will-change:transform;"></div>
+                  <div id="q-collapse" style="position:absolute;top:8px;left:8px;width:${BOARD_PX}px;height:${BOARD_PX}px;pointer-events:none;"></div>
+                  <div class="q-grid" id="q-pieces" style="${gridStyle(false)}pointer-events:none;"></div>
+                </div>
+                <div id="q-overlay"></div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="rail">
+            <section class="panel"><div class="panel-title">CONTROLS</div><div class="panel-body">
+              <div class="controls">
+                <div class="ctrl-row"><span class="ctrl-k">Move</span><span class="mono ctrl-v">&larr; &rarr;</span></div>
+                <div class="ctrl-row"><span class="ctrl-k">Rotate piece</span><span class="mono ctrl-v">&uarr; / Z</span></div>
+                <div class="ctrl-row"><span class="ctrl-k">Soft drop</span><span class="mono ctrl-v">&darr;</span></div>
+                <div class="ctrl-row"><span class="ctrl-k">Hard drop</span><span class="mono ctrl-v">SPACE</span></div>
+                <div class="ctrl-row"><span class="ctrl-k">Rotate board</span><span class="mono ctrl-v">R / E</span></div>
+                <div class="ctrl-row"><span class="ctrl-k">Bomb column</span><span class="mono ctrl-v">B</span></div>
+                <div class="ctrl-row"><span class="ctrl-k">Pause</span><span class="mono ctrl-v">P</span></div>
+              </div>
+            </div></section>
+            <section class="panel"><div class="panel-title">ACTIONS</div><div class="panel-body">
+              <div class="actions-col">
+                <button class="big-btn" data-act="boardCCW"><span class="big-btn-label">ROTATE ◐</span><span class="mono big-btn-sub">board ccw &middot; E</span></button>
+                <button class="big-btn" data-act="boardCW"><span class="big-btn-label">ROTATE ◑</span><span class="mono big-btn-sub">board cw &middot; R</span></button>
+                <button class="big-btn" data-act="bomb" id="q-bomb-btn"><span class="big-btn-label" id="q-bomb-label">BOMB &times;3</span><span class="mono big-btn-sub">column &middot; B</span></button>
+                <button class="big-btn" data-act="pause"><span class="big-btn-label" id="q-pause-label">PAUSE</span><span class="mono big-btn-sub">P</span></button>
+              </div>
+            </div></section>
+          </aside>
+        </div>
+
+        <footer class="footer">
+          <span class="mono footer-cell">v0.1 &middot; prototype</span>
+          <span class="footer-cell">QUADTRIS &middot; a center-out tetromino game</span>
+          <button class="mono footer-btn" id="q-open-tweaks">open tweaks ↗</button>
+        </footer>
+      </div>
+    </div>
+
+    <div class="settings" id="q-settings">
+      <div class="settings-hd"><b>Tweaks</b><button class="settings-x" id="q-settings-x">✕</button></div>
+      <div class="set-sect">Game</div>
+      <div class="set-row"><label>Speed</label>
+        <select class="set-field" id="set-speed">
+          <option>Chill</option><option>Medium</option><option>Brisk</option><option>Fast</option>
+        </select></div>
+      <div class="set-row"><label>Soft drop &times;</label>
+        <input type="range" id="set-softdrop" min="2" max="12" step="1"><span class="val" id="set-softdrop-val"></span></div>
+      <div class="set-sect">Display</div>
+      <div class="set-row"><label>Show landing hint</label>
+        <button class="toggle" id="set-hint"><i></i></button></div>
+      <div class="set-row"><label>Show ring outlines</label>
+        <button class="toggle" id="set-rings"><i></i></button></div>
+    </div>
+  `;
+
+  // Static background grid layer (built once).
+  const bg = document.getElementById('q-bg');
+  let html = '';
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (isCenter(r, c)) continue;
+    html += `<div style="grid-row:${r + 1};grid-column:${c + 1};background:var(--bg-2);border:1px solid var(--line-soft);border-radius:4px;"></div>`;
+  }
+  bg.innerHTML = html;
+
+  // Static N spawn arrow.
+  document.getElementById('q-arrows').innerHTML =
+    `<div class="arrow" style="top:-26px;left:50%;transform:translateX(-50%);opacity:1;">`
+    + `<span class="arrow-glyph" style="color:var(--accent);">${DIR_ARROW.N}</span></div>`;
+
+  // cache refs
+  el.score = document.getElementById('q-score');
+  el.rings = document.getElementById('q-rings');
+  el.level = document.getElementById('q-level');
+  el.next = document.getElementById('q-next');
+  el.current = document.getElementById('q-current');
+  el.rotwrap = document.getElementById('q-rotwrap');
+  el.collapse = document.getElementById('q-collapse');
+  el.bombAim = document.getElementById('q-bombaim');
+  el.bombLabel = document.getElementById('q-bomb-label');
+  el.bombBtn = document.getElementById('q-bomb-btn');
+  el.pieces = document.getElementById('q-pieces');
+  el.overlay = document.getElementById('q-overlay');
+  el.pauseLabel = document.getElementById('q-pause-label');
+  el.scale = document.getElementById('q-scale');
+  el.boardOuter = document.getElementById('q-board-outer');
+
+  wireEvents();
+  wireSettings();
+  observeScale();
+}
+
+function ringOverlaySVG() {
+  let rects = '';
+  for (const k of [1, 2, 3, 4]) {
+    const d = k + 1;
+    const startCell = CENTER - d;
+    const span = 2 * d + 1;
+    const x = startCell * (CELL_PX + GAP_PX) - GAP_PX / 2;
+    const sz = span * CELL_PX + (span - 1) * GAP_PX + GAP_PX;
+    rects += `<rect x="${x}" y="${x}" width="${sz}" height="${sz}" rx="4" fill="none" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 4" opacity="0.55"/>`;
+  }
+  return `<svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;" viewBox="0 0 ${BOARD_PX} ${BOARD_PX}">${rects}</svg>`;
+}
+
+function coreLabelHTML() {
+  const start = CENTER; // 1-indexed grid start covering CENTER-1..CENTER+1
+  return `<div style="grid-row:${start} / span 3;grid-column:${start} / span 3;position:relative;`
+    + `background:linear-gradient(135deg, var(--core) 0%, var(--core-2) 100%);border-radius:6px;`
+    + `display:flex;align-items:center;justify-content:center;`
+    + `box-shadow:inset 0 0 0 1px rgba(0,0,0,0.18), 0 0 28px oklch(0.55 0.06 80 / 0.35);">`
+    + `<svg width="60" height="60" viewBox="0 0 78 78">`
+    + `<rect x="6" y="6" width="66" height="66" rx="6" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="1.5"/>`
+    + `<rect x="20" y="20" width="38" height="38" rx="4" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="1.5"/>`
+    + `<rect x="33" y="33" width="12" height="12" rx="2" fill="rgba(0,0,0,0.6)"/></svg></div>`;
+}
+
+function renderRotWrap() {
+  const flashing = new Set();
+  if (S.flash) for (const k of S.flash.rings) for (const [r, c] of ringCells(k)) flashing.add(`${r},${c}`);
+
+  let inner = '';
+  if (S.settings.showRings) inner += ringOverlaySVG();
+  inner += `<div class="q-grid" style="${gridStyle(true)}">`;
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
+    if (isCenter(r, c)) continue;
+    const key = `${r},${c}`;
+    // Cells mid-collapse are drawn by the animation overlay, not here.
+    if (S.collapsing && S.collapsing.finals.has(key)) continue;
+    const locked = S.grid[r][c];
+    const flashHere = flashing.has(key);
+    if (!locked && !flashHere) continue;
+    const shadow = flashHere ? 'inset 0 0 0 2px var(--fg), 0 0 14px var(--fg)' : 'none';
+    inner += `<div style="grid-row:${r + 1};grid-column:${c + 1};background:${locked || 'transparent'};`
+      + `border:1px solid rgba(255,255,255,0.12);border-radius:4px;box-shadow:${shadow};"></div>`;
+  }
+  inner += coreLabelHTML();
+  inner += `</div>`;
+
+  // Recreate the rotating wrapper element so the rotation animation restarts
+  // (mirrors the prototype's keyed remount).
+  el.rotwrap.className = S.rotating ? `q-rot-${S.rotating.dir}` : '';
+  el.rotwrap.innerHTML = inner;
+}
+
+function renderPieces() {
+  const piece = S.piece;
+  const ghost = ghostPiece();
+  let html = '';
+
+  if (ghost && piece) {
+    const pieceKeys = new Set(piece.cells.map(([r, c]) => `${r},${c}`));
+    for (const [r, c] of ghost.cells) {
+      if (!inBounds(r, c) || pieceKeys.has(`${r},${c}`) || S.grid[r][c]) continue;
+      html += `<div style="grid-row:${r + 1};grid-column:${c + 1};position:relative;">`
+        + `<div style="position:absolute;inset:4px;border-radius:3px;border:1.5px dashed ${ghost.color};opacity:0.5;"></div></div>`;
+    }
+  }
+  if (piece) {
+    for (const [r, c] of piece.cells) {
+      if (!inBounds(r, c)) continue;
+      html += `<div style="grid-row:${r + 1};grid-column:${c + 1};background:${piece.color};`
+        + `border:1px solid rgba(255,255,255,0.18);border-radius:4px;box-shadow:0 0 8px ${piece.color};"></div>`;
+    }
+  }
+  el.pieces.innerHTML = html;
+}
+
+// The column a bomb would hit: the column under the current piece's pivot.
+function bombColumn(piece) {
+  const pivot = piece.cells[1] || piece.cells[0];
+  return Math.max(0, Math.min(SIZE - 1, pivot[1]));
+}
+function bombReady() {
+  return !!(S.piece && S.bombs > 0 && !S.paused && !S.gameOver
+    && !S.rotating && !S.collapsing && !S.flash);
+}
+function renderBombAim() {
+  if (!bombReady()) { el.bombAim.style.display = 'none'; return; }
+  const col = bombColumn(S.piece);
+  el.bombAim.style.display = 'block';
+  el.bombAim.style.left = (8 + col * (CELL_PX + GAP_PX)) + 'px';
+}
+
+function renderNext() {
+  if (!S.nextType) { el.next.innerHTML = `<div class="preview-box placeholder">&mdash;</div>`; return; }
+  const p = spawnPiece(S.nextType, S.nextSide || 'N');
+  let minR = Infinity, minC = Infinity, maxR = -Infinity, maxC = -Infinity;
+  for (const [r, c] of p.cells) { minR = Math.min(minR, r); minC = Math.min(minC, c); maxR = Math.max(maxR, r); maxC = Math.max(maxC, c); }
+  const h = maxR - minR + 1, w = maxC - minC + 1;
+  const cell = 16;
+  const padX = (4 - w) / 2, padY = (2 - h) / 2;
+  let rects = '';
+  for (const [r, c] of p.cells) {
+    rects += `<rect x="${4 + (c - minC + padX) * cell}" y="${4 + (r - minR + padY) * cell}" `
+      + `width="${cell - 2}" height="${cell - 2}" rx="2" fill="${p.color}"/>`;
+  }
+  el.next.innerHTML = `<div class="preview-box">`
+    + `<svg width="${4 * cell + 8}" height="${2 * cell + 8}" viewBox="0 0 ${4 * cell + 8} ${2 * cell + 8}">${rects}</svg>`
+    + `<div class="piece-tag mono" style="color:${p.color};border-color:${p.color};">${S.nextType}</div></div>`;
+}
+
+function renderCurrent() {
+  if (!S.piece) { el.current.innerHTML = `<div class="placeholder">&mdash;</div>`; return; }
+  const p = S.piece;
+  el.current.innerHTML = `<div class="current-row">`
+    + `<div class="mono piece-tag" style="color:${p.color};border-color:${p.color};">${p.type}</div>`
+    + `<div style="display:flex;flex-direction:column;gap:4px;">`
+    + `<div class="kicker">FALLING</div><div class="mono from-val">SOUTHBOUND</div></div></div>`;
+}
+
+function renderOverlay() {
+  if (S.paused && !S.gameOver) {
+    el.overlay.innerHTML = `<div class="overlay"><div class="overlay-inner">`
+      + `<div class="overlay-title">PAUSED</div><div class="overlay-sub">press P to resume</div></div></div>`;
+  } else if (S.gameOver) {
+    el.overlay.innerHTML = `<div class="overlay"><div class="overlay-inner">`
+      + `<div class="overlay-title">GAME OVER</div><div class="overlay-sub">press ENTER to restart</div>`
+      + `<button class="overlay-btn" id="q-restart">RESTART</button></div></div>`;
+    document.getElementById('q-restart').addEventListener('click', restart);
+  } else {
+    el.overlay.innerHTML = '';
+  }
+}
+
+function update() {
+  el.score.textContent = String(S.score).padStart(6, '0');
+  el.rings.textContent = String(S.ringsCleared).padStart(2, '0');
+  el.level.textContent = String(S.level).padStart(2, '0');
+  el.pauseLabel.textContent = S.paused ? 'RESUME' : 'PAUSE';
+  el.bombLabel.innerHTML = `BOMB &times;${S.bombs}`;
+  el.bombBtn.style.opacity = S.bombs > 0 ? '1' : '0.4';
+  renderNext();
+  renderCurrent();
+  renderRotWrap();
+  renderBombAim();
+  renderPieces();
+  renderOverlay();
+  scheduleLoop();
+}
+
+// ===================================================================
+// Wiring
+// ===================================================================
+function wireEvents() {
+  document.querySelectorAll('[data-act]').forEach(btn => {
+    btn.addEventListener('click', () => action(btn.getAttribute('data-act')));
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat && (e.key === 'ArrowUp' || e.key === ' ')) return;
+    const k = e.key;
+    if (k === 'ArrowLeft')       { action('left'); e.preventDefault(); }
+    else if (k === 'ArrowRight') { action('right'); e.preventDefault(); }
+    else if (k === 'ArrowUp')    { action('rotCW'); e.preventDefault(); }
+    else if (k === 'z' || k === 'Z') action('rotCCW');
+    else if (k === 'ArrowDown')  { if (!S.softDrop) { S.softDrop = true; scheduleLoop(); } e.preventDefault(); }
+    else if (k === ' ')          { action('hardDrop'); e.preventDefault(); }
+    else if (k === 'r' || k === 'R') action('boardCW');
+    else if (k === 'e' || k === 'E') action('boardCCW');
+    else if (k === 'b' || k === 'B') action('bomb');
+    else if (k === 'p' || k === 'P') action('pause');
+    else if (k === 'Enter' && S.gameOver) restart();
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowDown') { S.softDrop = false; scheduleLoop(); }
+  });
+}
+
+function observeScale() {
+  const apply = (w, h) => {
+    const s = Math.min(1, w / NATIVE, h / NATIVE);
+    el.scale.style.transform = `scale(${s})`;
+  };
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      apply(width, height);
+    });
+    ro.observe(el.boardOuter);
+  } else {
+    const onResize = () => apply(el.boardOuter.clientWidth, el.boardOuter.clientHeight);
+    window.addEventListener('resize', onResize);
+    onResize();
+  }
+}
+
+function wireSettings() {
+  const panel = document.getElementById('q-settings');
+  const speed = document.getElementById('set-speed');
+  const soft = document.getElementById('set-softdrop');
+  const softVal = document.getElementById('set-softdrop-val');
+  const hint = document.getElementById('set-hint');
+  const rings = document.getElementById('set-rings');
+
+  const syncControls = () => {
+    speed.value = S.settings.speed;
+    soft.value = S.settings.softDropMult;
+    softVal.textContent = S.settings.softDropMult;
+    hint.setAttribute('data-on', S.settings.showHint ? '1' : '0');
+    rings.setAttribute('data-on', S.settings.showRings ? '1' : '0');
+  };
+  const commit = () => { saveSettings(S.settings); syncControls(); update(); };
+
+  document.getElementById('q-open-tweaks').addEventListener('click', () => panel.classList.toggle('open'));
+  document.getElementById('q-settings-x').addEventListener('click', () => panel.classList.remove('open'));
+  speed.addEventListener('change', () => { S.settings.speed = speed.value; commit(); });
+  soft.addEventListener('input', () => { S.settings.softDropMult = Number(soft.value); commit(); });
+  hint.addEventListener('click', () => { S.settings.showHint = !S.settings.showHint; commit(); });
+  rings.addEventListener('click', () => { S.settings.showRings = !S.settings.showRings; commit(); });
+
+  syncControls();
+}
+
+// ===================================================================
+// Boot
+// ===================================================================
+buildShell();
+spawnFromQueue();
+</script>
+</body>
+</html>
