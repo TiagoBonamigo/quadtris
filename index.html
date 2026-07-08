@@ -231,14 +231,14 @@
 "use strict";
 // ===================================================================
 // Quadtris — center-out tetromino game.
-// Grid: 25x25. Center 3x3 (the immutable "core"). Rings are concentric
+// Grid: 31x31. Center 3x3 (the immutable "core"). Rings are concentric
 // squares around the core; complete a full ring to clear it.
 // Pure game logic below is framework-free; the UI is plain DOM.
 // ===================================================================
 
-const SIZE = 25;
-const CENTER = 12;
-const N_RINGS = 11;
+const SIZE = 31;
+const CENTER = 15;
+const N_RINGS = 14;
 
 const PIECE_COLORS = {
   I: 'oklch(0.78 0.14 215)', // cyan
