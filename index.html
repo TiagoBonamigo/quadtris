@@ -247,6 +247,10 @@
   /* ---- touch controls (mobile) ---- */
   .touch-controls { display: none; grid-column: 1 / -1; flex-direction: column; gap: 8px; }
   .touch-row { display: flex; gap: 8px; }
+  /* left thumb = move pair, right thumb = rotate pair */
+  .touch-pair { flex: 1; display: flex; gap: 8px; }
+  .touch-row.split { gap: 24px; }
+  .touch-btn.wide { flex: 1.7; }
   .touch-btn {
     flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px;
     min-height: 52px; background: var(--bg-2); border: 1px solid var(--line);
@@ -274,18 +278,25 @@
   }
 
   @media (max-width: 900px) {
+    .app {
+      padding: calc(6px + env(safe-area-inset-top, 0px))
+               max(8px, env(safe-area-inset-left, 0px))
+               calc(4px + env(safe-area-inset-bottom, 0px))
+               max(8px, env(safe-area-inset-right, 0px));
+    }
     .middle { display: flex; flex-direction: column; min-height: 0; gap: 8px; }
     .rail { display: none; }
-    .mobile-hud { display: flex; }
+    /* header wraps: brand + stats on row 1, HOLD/NEXT hud on row 2 */
+    .header { flex-wrap: wrap; row-gap: 6px; padding: 2px; }
+    .mobile-hud { display: flex; order: 3; flex-basis: 100%; }
     .board-outer { flex: 1; min-height: 0; }
-    .header { padding: 4px 2px; }
-    .wordmark { font-size: 17px; letter-spacing: 0.14em; }
+    .wordmark { font-size: 16px; letter-spacing: 0.12em; }
     .tagline { display: none; }
-    .stats { gap: 12px; }
-    .stat-value { font-size: 18px; }
-    .stat-label { font-size: 9px; }
+    .stats { gap: 10px; min-width: 0; }
+    .stat-value { font-size: 16px; }
+    .stat-label { font-size: 8px; letter-spacing: 0.14em; }
     .footer { display: none; }
-    .frame { gap: 8px; }
+    .frame { gap: 6px; }
   }
 </style>
 </head>
@@ -1865,20 +1876,24 @@ function buildShell() {
         <div class="touch-controls" id="q-touch">
           <div class="touch-row">
             <button class="touch-btn small" id="q-t-hold">HOLD</button>
-            <button class="touch-btn small" id="q-t-bomb"><span id="q-touch-bomb-label">BOMB ×3</span></button>
+            <button class="touch-btn small" id="q-t-boardccw" aria-label="Spin board counterclockwise">◐</button>
+            <button class="touch-btn small wide" id="q-t-bomb"><span id="q-touch-bomb-label">BOMB ×3</span></button>
+            <button class="touch-btn small" id="q-t-boardcw" aria-label="Spin board clockwise">◑</button>
             <button class="touch-btn small" id="q-t-pause"><span id="q-touch-pause-label">PAUSE</span></button>
           </div>
-          <div class="touch-row">
-            <button class="touch-btn" id="q-t-left" aria-label="Move left">◀</button>
-            <button class="touch-btn" id="q-t-rotccw" aria-label="Rotate counterclockwise">⟲</button>
-            <button class="touch-btn" id="q-t-rotcw" aria-label="Rotate clockwise">⟳</button>
-            <button class="touch-btn" id="q-t-right" aria-label="Move right">▶</button>
+          <div class="touch-row split">
+            <div class="touch-pair">
+              <button class="touch-btn" id="q-t-left" aria-label="Move left">◀</button>
+              <button class="touch-btn" id="q-t-right" aria-label="Move right">▶</button>
+            </div>
+            <div class="touch-pair">
+              <button class="touch-btn" id="q-t-rotccw" aria-label="Rotate counterclockwise">⟲</button>
+              <button class="touch-btn" id="q-t-rotcw" aria-label="Rotate clockwise">⟳</button>
+            </div>
           </div>
-          <div class="touch-row">
-            <button class="touch-btn small" id="q-t-boardccw" aria-label="Spin board counterclockwise">◐ SPIN</button>
+          <div class="touch-row split">
             <button class="touch-btn" id="q-t-down" aria-label="Soft drop">▼</button>
             <button class="touch-btn small" id="q-t-drop" aria-label="Hard drop">DROP</button>
-            <button class="touch-btn small" id="q-t-boardcw" aria-label="Spin board clockwise">SPIN ◑</button>
           </div>
         </div>
       </div>
