@@ -4,6 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Quadtris</title>
+<meta name="description" content="Quadtris — a center-out tetromino game. Build outward from the core, complete concentric rings, survive the collapse.">
+<meta name="theme-color" content="#15171d">
+<meta property="og:title" content="Quadtris">
+<meta property="og:description" content="A center-out tetromino game. Build outward from the core, complete concentric rings, survive the collapse.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://tiagobonamigo.github.io/quadtris/">
+<meta property="og:image" content="https://tiagobonamigo.github.io/quadtris/icon-512.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -36,11 +46,18 @@
   .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
   button { font-family: inherit; }
   ::selection { background: var(--accent); color: var(--bg); }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
 
   @keyframes q-rotate-cw  { from { transform: rotate(0deg); }   to { transform: rotate(90deg);  } }
   @keyframes q-rotate-ccw { from { transform: rotate(0deg); }   to { transform: rotate(-90deg); } }
   .q-rot-cw  { animation: q-rotate-cw  320ms cubic-bezier(0.7, 0, 0.3, 1) forwards; }
   .q-rot-ccw { animation: q-rotate-ccw 320ms cubic-bezier(0.7, 0, 0.3, 1) forwards; }
+  @keyframes q-ghost-warn { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.35; } }
+  @keyframes q-bump { 0% { transform: scale(1); } 30% { transform: scale(1.25); color: var(--accent); } 100% { transform: scale(1); } }
+  .stat-value.bump { animation: q-bump 500ms ease; }
 
   /* ---- layout ---- */
   .app {
@@ -59,10 +76,11 @@
   .brand { display: flex; align-items: center; gap: 12px; }
   .wordmark { font-size: 22px; font-weight: 700; letter-spacing: 0.18em; }
   .tagline { font-size: 11px; color: var(--fg-mute); letter-spacing: 0.16em; text-transform: uppercase; margin-top: 2px; }
-  .stats { display: flex; gap: 28px; }
+  .stats { display: flex; gap: 24px; }
   .stat { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
   .stat-label { font-size: 10px; letter-spacing: 0.22em; color: var(--fg-mute); }
   .stat-value { font-size: 24px; font-weight: 500; }
+  .score-mult { font-size: 9px; color: var(--fg-mute); letter-spacing: 0.06em; }
 
   /* middle */
   .middle {
@@ -116,6 +134,7 @@
   .board-outer {
     position: relative; display: flex; align-items: center; justify-content: center;
     min-width: 0; min-height: 0; width: 100%; height: 100%; overflow: hidden;
+    touch-action: none;
   }
   .board {
     background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
@@ -127,25 +146,55 @@
   .arrow { position: absolute; transition: opacity 200ms ease; }
   .arrow-glyph { font-size: 22px; font-weight: 700; text-shadow: 0 0 12px currentColor; }
 
+  .danger-strip { position: absolute; pointer-events: none; opacity: 0; transition: opacity 250ms ease; }
+  .danger-strip.on { opacity: 1; }
+
+  .banner {
+    position: absolute; left: 50%; top: 16%; transform: translateX(-50%);
+    padding: 10px 26px; background: rgba(0,0,0,0.55); border: 1px solid var(--accent);
+    border-radius: 8px; font-size: 20px; font-weight: 700; letter-spacing: 0.24em;
+    color: var(--accent); pointer-events: none; opacity: 0; z-index: 5; white-space: nowrap;
+  }
+  .banner.show { animation: q-banner 1400ms ease forwards; }
+  @keyframes q-banner {
+    0%   { opacity: 0; transform: translateX(-50%) translateY(8px); }
+    15%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+    75%  { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
   .overlay {
-    position: absolute; inset: 0;
+    position: absolute; inset: 0; z-index: 10;
     display: flex; align-items: center; justify-content: center;
     background: rgba(0,0,0,0.55); backdrop-filter: blur(4px); border-radius: 12px;
   }
   .overlay-inner {
     display: flex; flex-direction: column; align-items: center; gap: 10px;
-    padding: 28px 36px; background: var(--bg-2);
+    padding: 24px 32px; background: var(--bg-2);
     border: 1px solid var(--line); border-radius: 10px;
     box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    max-height: 94%; max-width: 94%; overflow: auto;
   }
-  .overlay-title { font-size: 28px; font-weight: 700; letter-spacing: 0.22em; }
-  .overlay-sub { font-size: 12px; color: var(--fg-mute); letter-spacing: 0.18em; }
+  .overlay-title { font-size: 28px; font-weight: 700; letter-spacing: 0.22em; text-align: center; }
+  .overlay-sub { font-size: 12px; color: var(--fg-mute); letter-spacing: 0.18em; text-align: center; }
   .overlay-btn {
     margin-top: 8px; padding: 10px 22px; background: var(--accent); color: var(--bg);
     border: none; border-radius: 5px; font-size: 13px; font-weight: 600; letter-spacing: 0.18em; cursor: pointer;
   }
-  .size-pick { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-  .size-pick .overlay-btn { margin-top: 0; }
+  .menu-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .pick-btn {
+    padding: 8px 14px; background: var(--bg-3); color: var(--fg-2); border: 1px solid var(--line);
+    border-radius: 5px; font-size: 12px; font-weight: 600; letter-spacing: 0.14em; cursor: pointer;
+  }
+  .pick-btn.sel { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .pick-btn:disabled { opacity: 0.35; cursor: default; }
+  .pick-sub { font-size: 10px; color: var(--fg-mute); letter-spacing: 0.14em; }
+  .go-stats { display: grid; grid-template-columns: auto auto; gap: 3px 20px; font-size: 12px; }
+  .go-stats .k { color: var(--fg-mute); letter-spacing: 0.1em; }
+  .go-stats .v { text-align: right; color: var(--fg); }
+  .top10 { border-collapse: collapse; font-size: 11px; }
+  .top10 td, .top10 th { padding: 2px 8px; text-align: right; color: var(--fg-2); }
+  .top10 th { color: var(--fg-mute); font-weight: 500; letter-spacing: 0.12em; font-size: 9px; text-transform: uppercase; }
 
   .footer {
     display: flex; justify-content: space-between; align-items: center;
@@ -157,6 +206,7 @@
     font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; padding: 0;
   }
   .footer-btn:hover { color: var(--fg-2); }
+  .footer-group { display: flex; gap: 18px; }
 
   /* settings panel */
   .settings {
@@ -183,6 +233,7 @@
     border: 1px solid var(--line); border-radius: 7px;
     background: var(--bg); color: var(--fg); font: inherit; font-size: 12px; outline: none;
   }
+  button.set-field { cursor: pointer; }
   .set-row input[type="range"] { flex: 1; accent-color: var(--accent); }
   .toggle {
     position: relative; width: 34px; height: 20px; border: 0; border-radius: 999px;
@@ -213,6 +264,10 @@
   .mobile-hud-label { font-size: 9px; letter-spacing: 0.16em; color: var(--fg-mute); }
   .mobile-hud-preview { min-width: 40px; min-height: 20px; display: flex; align-items: center; justify-content: center; }
   .mobile-hud-preview.empty { opacity: 0.35; }
+  .hud-btn {
+    background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: 6px;
+    color: var(--fg-2); font-size: 14px; padding: 4px 10px; cursor: pointer;
+  }
 
   @media (pointer: coarse) {
     .touch-controls { display: flex; padding: 2px 2px calc(4px + env(safe-area-inset-bottom, 0px)); }
@@ -226,7 +281,7 @@
     .header { padding: 4px 2px; }
     .wordmark { font-size: 17px; letter-spacing: 0.14em; }
     .tagline { display: none; }
-    .stats { gap: 16px; }
+    .stats { gap: 12px; }
     .stat-value { font-size: 18px; }
     .stat-label { font-size: 9px; }
     .footer { display: none; }
@@ -241,12 +296,12 @@
 "use strict";
 // ===================================================================
 // Quadtris — center-out tetromino game.
-// Grid: selectable 25x25 / 31x31 / 37x37. Center 3x3 (the immutable "core").
+// Grid: selectable odd sizes 19..43. Center 3x3 (the immutable "core").
 // Rings are concentric squares around the core; complete a full ring to
 // clear it. Pure game logic below is framework-free; the UI is plain DOM.
 // ===================================================================
 
-const GRID_SIZES = [25, 31, 37];
+const GRID_SIZES = [19, 25, 31, 37, 43];
 let SIZE, CENTER, N_RINGS;
 
 const PIECE_COLORS = {
@@ -277,9 +332,6 @@ const DELTAS = {
   W: [ 0,  1],
   E: [ 0, -1],
 };
-
-const DIR_CW  = { N: 'E', E: 'S', S: 'W', W: 'N' };
-const DIR_CCW = { N: 'W', W: 'S', S: 'E', E: 'N' };
 
 function ringOf(r, c) {
   const d = Math.max(Math.abs(r - CENTER), Math.abs(c - CENTER));
@@ -537,11 +589,28 @@ function rotateGridCCW(grid) {
   return g;
 }
 
+// --- seeded RNG -----------------------------------------------------------
+// mulberry32 over a plain uint32 counter (S.rngState), so runs are fully
+// reproducible (daily mode shares one board worldwide) and the state is a
+// single serializable number (save/resume).
+function hashStr(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function rngNext() {
+  S.rngState = (S.rngState + 0x6D2B79F5) >>> 0;
+  let t = S.rngState;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
 // --- bag randomizer -----------------------------------------------------
 function newBag() {
   const a = PIECE_TYPES.slice();
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rngNext() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -565,30 +634,106 @@ function configureGrid(size) {
 }
 
 const SPEEDS = { Chill: 750, Medium: 520, Brisk: 380, Fast: 260 };
+// Faster gravity settings earn proportionally more points, so best-score
+// comparisons stay honest across speed choices.
+const SPEED_MULT = { Chill: 0.8, Medium: 1, Brisk: 1.25, Fast: 1.5 };
 const DIR_ARROW = { N: '↓', S: '↑', W: '→', E: '←' };
 
+const SPRINT_GOAL = 10;
+const DAILY_SIZE = 31;
+const MODE_INFO = {
+  classic: { label: 'CLASSIC', desc: 'endless · full rules' },
+  zen:     { label: 'ZEN',     desc: 'no game over · build freely' },
+  sprint:  { label: 'SPRINT',  desc: `clear ${SPRINT_GOAL} rings against the clock` },
+  daily:   { label: 'DAILY',   desc: `one shared seeded board a day · ${DAILY_SIZE}×${DAILY_SIZE}` },
+};
+
 // ===================================================================
-// Settings (replaces the design-tool tweaks harness)
+// Settings + persistence (localStorage)
 // ===================================================================
-const SETTINGS_DEFAULTS = { speed: 'Medium', showHint: true, softDropMult: 6, showRings: true, gridSize: 31 };
-function loadSettings() {
+const SETTINGS_DEFAULTS = { speed: 'Medium', showHint: true, softDropMult: 6, showRings: true, gridSize: 31, touchMode: 'both' };
+function loadJSON(key, fallback) {
   try {
-    const raw = localStorage.getItem('quadtris.settings');
-    if (raw) return { ...SETTINGS_DEFAULTS, ...JSON.parse(raw) };
+    const raw = localStorage.getItem(key);
+    if (raw != null) return JSON.parse(raw);
   } catch (e) {}
-  return { ...SETTINGS_DEFAULTS };
+  return fallback;
 }
-function saveSettings(s) {
-  try { localStorage.setItem('quadtris.settings', JSON.stringify(s)); } catch (e) {}
+function saveJSON(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+}
+function loadSettings() { return { ...SETTINGS_DEFAULTS, ...loadJSON('quadtris.settings', {}) }; }
+function saveSettings(s) { saveJSON('quadtris.settings', s); }
+
+// --- records: best per mode+size, global top-10 runs ----------------------
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function fmtTime(ms) {
+  const t = Math.max(0, Math.floor(ms));
+  const m = Math.floor(t / 60000), s = Math.floor((t % 60000) / 1000), d = Math.floor((t % 1000) / 100);
+  return `${m}:${String(s).padStart(2, '0')}.${d}`;
+}
+function bestKey() { return `${S.mode}:${SIZE}`; }
+function getBest() { return loadJSON('quadtris.best', {})[bestKey()] || null; }
+
+// Update best-score / top-10 records at the end of a run. Sprint runs rank
+// by time (only when the goal was reached); everything else by score.
+// Returns true when this run set a new best for the current mode+size.
+function recordGameEnd() {
+  let newBest = false;
+  const all = loadJSON('quadtris.best', {});
+  const prev = all[bestKey()];
+  if (S.mode === 'sprint') {
+    if (S.winner && (!prev || S.elapsedMs < prev.timeMs)) {
+      all[bestKey()] = { timeMs: S.elapsedMs, score: S.score, date: todayStr() };
+      newBest = true;
+    }
+  } else if (!prev || S.score > prev.score) {
+    all[bestKey()] = { score: S.score, rings: S.ringsCleared, date: todayStr() };
+    newBest = true;
+  }
+  if (newBest) saveJSON('quadtris.best', all);
+  const top = loadJSON('quadtris.top10', []);
+  top.push({ score: S.score, rings: S.ringsCleared, size: SIZE, mode: S.mode, date: todayStr() });
+  top.sort((a, b) => b.score - a.score);
+  saveJSON('quadtris.top10', top.slice(0, 10));
+  return newBest;
+}
+
+// --- save & resume ---------------------------------------------------------
+// The whole run is one plain object, snapshotted at every lock (and on
+// pause / tab-hide), so a reload or accidental close never eats a run.
+const RUN_KEY = 'quadtris.run';
+function saveRun() {
+  if (S.awaitingStart || S.gameOver) return;
+  saveJSON(RUN_KEY, {
+    v: 1, size: SIZE, mode: S.mode, grid: S.grid, piece: S.piece,
+    bag: S.bag, nextType: S.nextType, nextSide: S.nextSide,
+    hold: S.hold, holdUsed: S.holdUsed,
+    score: S.score, ringsCleared: S.ringsCleared, level: S.level,
+    bombs: S.bombs, rngState: S.rngState, lastDifficult: S.lastDifficult,
+    stats: S.stats, elapsedMs: S.elapsedMs,
+  });
+}
+function loadSavedRun() {
+  const run = loadJSON(RUN_KEY, null);
+  return run && run.v === 1 && GRID_SIZES.includes(run.size) && MODE_INFO[run.mode] ? run : null;
+}
+function clearSavedRun() {
+  try { localStorage.removeItem(RUN_KEY); } catch (e) {}
 }
 
 // ===================================================================
-// Game state + controller
+// Game state
 // ===================================================================
+function newStats() { return { pieces: 0, holds: 0, bombsUsed: 0, maxChain: 0 }; }
+
 const S = {
   grid: null, // set by configureGrid()+emptyGrid() at boot, once SIZE is known
   piece: null,
-  bag: newBag(),
+  bag: [],    // filled once a run starts (the shuffle consumes the seeded RNG)
   nextType: null,
   nextSide: null,
   score: 0,
@@ -596,16 +741,26 @@ const S = {
   level: 1,
   paused: false,
   gameOver: false,
-  flash: null,     // { rings: [k] }
+  winner: false,        // sprint goal reached (the game-over overlay becomes a win screen)
+  flash: null,          // { rings: [k] }
   softDrop: false,
-  rotating: null,  // { dir: 'cw' | 'ccw' }
-  collapsing: null, // { finals: Set<"r,c"> } while the collapse animation plays
-  bombs: 3,        // column-bomb charges
-  hold: null,      // held piece type
-  holdUsed: false, // hold already spent for the piece currently in play
-  grounded: false, // piece can't fall further; lock-delay grace period active
-  lockResets: 0,   // lock-delay grace refreshes spent on the current piece
-  awaitingStart: true, // showing the field-size picker, game not yet running
+  rotating: null,       // { dir: 'cw' | 'ccw' }
+  collapsing: null,     // { finals: Set<"r,c"> } while the collapse animation plays
+  bombs: 3,             // column-bomb charges
+  hold: null,           // held piece type
+  holdUsed: false,      // hold already spent for the piece currently in play
+  grounded: false,      // piece can't fall further; lock-delay grace period active
+  lockResets: 0,        // lock-delay grace refreshes spent on the current piece
+  awaitingStart: true,  // showing the mode/size menu, game not yet running
+  mode: 'classic',
+  rngState: 0,          // mulberry32 counter (seeded per run)
+  lastDifficult: false, // previous clearing lock was multi-ring/cascade (back-to-back)
+  buffered: null,       // one input kind queued while an animation owned the board
+  deathCause: null,     // 'wall' | 'disconnect'
+  deathCells: null,     // Set<"r,c"> — the cells of the piece that ended the run
+  newBest: false,       // last run set a record (shown on the overlay)
+  stats: newStats(),    // per-run counters for the end-of-run stats block
+  elapsedMs: 0,         // active play time (pauses excluded); sprint clock
   settings: loadSettings(),
 };
 
@@ -614,56 +769,82 @@ const BOMB_MAX = 5;
 const BOMB_EVERY_RINGS = 5;
 const LOCK_DELAY_MS = 500;
 const LOCK_DELAY_MAX_RESETS = 1;
-
-let loopId = null;
-let lockDelayTimer = null;
+// ===================================================================
+// Loop / input bookkeeping (module-level, not part of the saved run)
+// ===================================================================
+let rafId = null, lastTs = null, gravAcc = 0;
+let lockRemainMs = null;            // counts down while grounded; lock at 0
+const DAS_MS = 170, ARR_MS = 40;    // delayed auto shift: initial delay, repeat rate
+let dasDir = 0, dasTime = 0, arrAcc = 0;
+let dasHeld = { left: false, right: false };
 let touchHoldTimer = null, touchRepeatTimer = null;
-let pointerListenersWired = false;
-let keyListenersWired = false;
+let keyListenersWired = false, globalWired = false;
 let scaleObserver = null, scaleResizeHandler = null;
+let bannerTimer = null;
+let restartArm = null;              // pending two-tap restart confirmation
+let menuMode = null, menuSize = null; // start-menu selections (persist across renders)
 
+// --- ghost & queue helpers ------------------------------------------------
 function ghostPiece() {
-  if (!S.piece || !S.settings.showHint) return null;
+  if (!S.piece) return null;
   let p = S.piece;
   while (true) {
     const next = pieceStep(p);
-    if (isPieceValid(next.cells, S.grid, p.dir)) p = next; else break;
+    if (isPieceValid(next.cells, S.grid, p.dir)) p = next;
+    else break;
   }
   return p;
 }
+// Would locking the ghost here end the run? Drives the warning ghost: the
+// disconnect rule kills invisibly otherwise.
+function ghostFatal(g) {
+  if (S.mode === 'zen') return false;
+  if (g.cells.some(([r, c]) => !inBounds(r, c))) return true;
+  const { grid: locked } = lockPiece(g, S.grid);
+  return !isConnectedToCore(locked, g.cells.filter(([r, c]) => inBounds(r, c)));
+}
 
-function drawNext(curBag) {
-  let b = curBag.slice();
+function drawNext(bag) {
+  let b = bag.slice();
   if (b.length === 0) b = newBag();
   const type = b.shift();
   return { type, side: 'N', bag: b };
 }
 
+// All scoring passes through here so the speed multiplier applies uniformly.
+function addScore(pts) {
+  S.score += Math.max(0, Math.round(pts * (SPEED_MULT[S.settings.speed] || 1)));
+}
+
+// ===================================================================
+// Game flow
+// ===================================================================
 function spawnFromQueue() {
   let type = S.nextType, side = S.nextSide || 'N', b = S.bag;
   if (!type) { const d = drawNext(b); type = d.type; side = d.side; b = d.bag; }
   const p = spawnPiece(type, side);
   const d2 = drawNext(b);
-  S.bag = d2.bag;
-  S.nextType = d2.type;
-  S.nextSide = d2.side;
-  if (!isPieceValid(p.cells, S.grid, p.dir)) {
-    S.gameOver = true;
-    S.piece = null;
-    update();
-    return;
-  }
+  S.bag = d2.bag; S.nextType = d2.type; S.nextSide = d2.side;
+  if (!isPieceValid(p.cells, S.grid, p.dir)) { gameEnd('wall', null); return; }
   S.piece = p;
   S.holdUsed = false;
+  S.stats.pieces++;
   resetGroundState();
   update();
+  flushBuffered();
 }
 
-// Stash the falling piece in the hold slot (once per piece, until it locks)
-// and bring in either the previously held piece or a fresh spawn.
+// Replay the input that arrived while an animation owned the board.
+function flushBuffered() {
+  const k = S.buffered;
+  S.buffered = null;
+  if (k && S.piece && !S.paused && !S.gameOver) action(k);
+}
+
 function holdSwap() {
   if (!S.piece || S.holdUsed) return;
   const curType = S.piece.type;
+  S.stats.holds++;
   if (S.hold == null) {
     S.hold = curType;
     S.piece = null;
@@ -672,7 +853,7 @@ function holdSwap() {
     const swapType = S.hold;
     S.hold = curType;
     const p = spawnPiece(swapType, 'N');
-    if (!isPieceValid(p.cells, S.grid, p.dir)) { S.gameOver = true; S.piece = null; update(); return; }
+    if (!isPieceValid(p.cells, S.grid, p.dir)) { gameEnd('wall', null); return; }
     S.piece = p;
   }
   resetGroundState();
@@ -680,61 +861,132 @@ function holdSwap() {
   update();
 }
 
-// Clears every complete ring in `grid`, collapses, then re-checks the
-// settled grid for rings the collapse itself completed — chaining until a
-// pass finds none. `pieceBonus` (the +10 for the piece that just locked) is
-// only ever awarded once, on the first pass.
+function isBoardEmpty(g) {
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (g[r][c]) return false;
+  return true;
+}
+
+// Clears every complete ring in `grid` (with flash), collapses toward the
+// core, then re-checks the settled grid for rings the collapse itself
+// completed — chaining until a pass finds none. Chained passes score with a
+// rising cascade multiplier (×2, ×3, …); a multi-ring pass or any cascade
+// counts as "difficult" for the back-to-back ×1.5 bonus on the NEXT one.
+// `pieceBonus` (the flat lock bonus) is only awarded once, on the first pass.
 function settleRings(grid, pieceBonus, onDone) {
-  const rings = findCompleteRings(grid);
-  if (rings.length === 0) { S.grid = grid; onDone(); return; }
-  S.flash = { rings };
-  S.grid = grid;
-  update();
-  setTimeout(() => {
-    const cleared = clearRings(grid, rings);
-    const { grid: finalGrid, paths } = computeCollapse(cleared);
-    S.flash = null;
-    const gained = rings.reduce((s, k) => s + 100 * k, 0) * (rings.length > 1 ? 2 : 1);
-    S.score += gained + (pieceBonus ? 10 : 0);
-    const oldRings = S.ringsCleared;
-    S.ringsCleared += rings.length;
-    S.level = 1 + Math.floor(S.ringsCleared / 4);
-    // Earn a bomb charge every few rings cleared.
-    const earned = Math.floor(S.ringsCleared / BOMB_EVERY_RINGS) - Math.floor(oldRings / BOMB_EVERY_RINGS);
-    if (earned > 0) S.bombs = Math.min(BOMB_MAX, S.bombs + earned);
-    runCollapseAnimation(cleared, finalGrid, paths, () => settleRings(finalGrid, false, onDone));
-  }, 320);
+  const lock = { total: 0, difficult: false, b2b: false };
+  const pass = (g, chain, bonus) => {
+    const rings = findCompleteRings(g);
+    if (rings.length === 0) {
+      if (bonus) addScore(10);
+      S.grid = g;
+      finishSettle(lock);
+      onDone();
+      return;
+    }
+    S.stats.maxChain = Math.max(S.stats.maxChain, chain);
+    if (chain === 1) {
+      lock.difficult = rings.length > 1;
+      lock.b2b = rings.length > 1 && S.lastDifficult;
+    } else {
+      lock.difficult = true;
+    }
+    lock.total += rings.length;
+    S.flash = { rings };
+    S.grid = g;
+    update();
+    setTimeout(() => {
+      const cleared = clearRings(g, rings);
+      const { grid: finalGrid, paths } = computeCollapse(cleared);
+      S.flash = null;
+      let gained = rings.reduce((s, k) => s + 100 * k, 0) * (rings.length > 1 ? 2 : 1) * chain;
+      if (lock.b2b) gained *= 1.5;
+      addScore(gained + (bonus ? 10 : 0));
+      const oldRings = S.ringsCleared;
+      S.ringsCleared += rings.length;
+      const newLevel = 1 + Math.floor(S.ringsCleared / 4);
+      if (newLevel !== S.level) {
+        S.level = newLevel;
+        showBanner(`LEVEL ${newLevel}`);
+        bumpStat(el.level);
+        announce(`Level ${newLevel}.`);
+      }
+      const earned = Math.floor(S.ringsCleared / BOMB_EVERY_RINGS) - Math.floor(oldRings / BOMB_EVERY_RINGS);
+      if (earned > 0) S.bombs = Math.min(BOMB_MAX, S.bombs + earned);
+      announce(`Cleared ${rings.length} ring${rings.length > 1 ? 's' : ''}${chain > 1 ? `, cascade chain ${chain}` : ''}. Score ${S.score}.`);
+      runCollapseAnimation(cleared, finalGrid, paths, () => pass(finalGrid, chain + 1, false));
+    }, 320);
+  };
+  pass(grid, 1, pieceBonus);
+}
+
+function finishSettle(lock) {
+  if (lock.total === 0) return;
+  if (lock.b2b) showBanner('BACK-TO-BACK ×1.5');
+  S.lastDifficult = lock.difficult;
+  if (isBoardEmpty(S.grid)) {
+    addScore(1000);
+    showBanner('PERFECT CLEAR');
+    announce('Perfect clear! Plus 1000.');
+  }
 }
 
 function lockAndClear(p) {
   resetGroundState();
-  const { grid: locked, gameOver: over } = lockPiece(p, S.grid);
-  if (over) { S.grid = locked; S.piece = null; S.gameOver = true; update(); return; }
-  // A piece that locks without a chain of filled cells back to the core is
-  // illegal ("build outward from the core") -> game over.
+  const { grid: locked, gameOver: off } = lockPiece(p, S.grid);
   const pieceCells = p.cells.filter(([r, c]) => inBounds(r, c));
-  if (!isConnectedToCore(locked, pieceCells)) {
-    S.grid = locked; S.piece = null; S.gameOver = true; update(); return;
+  if (S.mode !== 'zen') {
+    if (off) { S.grid = locked; gameEnd('wall', pieceCells); return; }
+    if (!isConnectedToCore(locked, pieceCells)) { S.grid = locked; gameEnd('disconnect', pieceCells); return; }
   }
   S.piece = null;
-  const rings = findCompleteRings(locked);
-  if (rings.length === 0) {
-    S.grid = locked;
-    S.score += 10;
+  settleRings(locked, true, () => {
+    if (S.mode === 'sprint' && S.ringsCleared >= SPRINT_GOAL) { sprintWin(); return; }
+    saveRun();
     spawnFromQueue();
-  } else {
-    settleRings(locked, true, () => spawnFromQueue());
-  }
+  });
 }
 
-// Animate the center-attraction collapse: moving cells slide along their
-// recorded straight/diagonal paths at a uniform speed; the longest path
-// defines a short, fast total duration. Static cells are drawn normally by
-// the board layer (moving cells are skipped there and drawn on the overlay).
-function runCollapseAnimation(startGrid, finalGrid, paths, onDone) {
-  if (!paths.length) { S.grid = finalGrid; S.collapsing = null; update(); onDone(); return; }
+// Ends the run: record why (named on the overlay) and which cells did it
+// (painted in the warn color on the final board), update records, drop the
+// auto-save.
+function gameEnd(cause, cells) {
+  S.piece = null;
+  S.gameOver = true;
+  S.winner = false;
+  S.deathCause = cause;
+  S.deathCells = cells && cells.length ? new Set(cells.map(([r, c]) => `${r},${c}`)) : null;
+  S.newBest = recordGameEnd();
+  clearSavedRun();
+  announce(cause === 'disconnect'
+    ? `Game over: piece locked disconnected from the core. Score ${S.score}.`
+    : `Game over: piece locked beyond the outer wall. Score ${S.score}.`);
+  update();
+}
 
-  const finals = new Set(paths.map(m => { const p = m.path[m.path.length - 1]; return `${p[0]},${p[1]}`; }));
+function sprintWin() {
+  S.piece = null;
+  S.gameOver = true;
+  S.winner = true;
+  S.deathCause = null;
+  S.deathCells = null;
+  S.newBest = recordGameEnd();
+  clearSavedRun();
+  announce(`Sprint complete in ${fmtTime(S.elapsedMs)}. Score ${S.score}.`);
+  update();
+}
+
+// Animates cells sliding along their collapse paths, then commits finalGrid.
+function runCollapseAnimation(fromGrid, finalGrid, paths, onDone) {
+  if (paths.length === 0) {
+    S.grid = finalGrid;
+    S.collapsing = null;
+    onDone();
+    return;
+  }
+  const finals = new Set(paths.map(p => {
+    const [r, c] = p.path[p.path.length - 1];
+    return `${r},${c}`;
+  }));
   S.collapsing = { finals };
   S.grid = finalGrid;
   update();
@@ -742,143 +994,210 @@ function runCollapseAnimation(startGrid, finalGrid, paths, onDone) {
   const layer = el.collapse;
   layer.innerHTML = '';
   const PITCH = CELL_PX + GAP_PX;
-  let maxSteps = 1;
-  for (const m of paths) maxSteps = Math.max(maxSteps, m.path.length - 1);
-  const total = Math.max(160, Math.min(340, maxSteps * 22)); // fast, bounded
-
-  for (const m of paths) {
-    const [r0, c0] = m.path[0];
+  const STEP_MS = 40;
+  let maxSteps = 0;
+  for (const { color, path } of paths) {
+    const [r0, c0] = path[0];
     const div = document.createElement('div');
-    div.style.cssText = `position:absolute;left:${c0 * PITCH}px;top:${r0 * PITCH}px;`
-      + `width:${CELL_PX}px;height:${CELL_PX}px;background:${m.color};`
-      + `border:1px solid rgba(255,255,255,0.12);border-radius:4px;will-change:transform;`;
+    div.style.cssText = `position:absolute;width:${CELL_PX}px;height:${CELL_PX}px;border-radius:4px;`
+      + `background:${color};border:1px solid rgba(255,255,255,0.12);`
+      + `left:${c0 * PITCH}px;top:${r0 * PITCH}px;`;
     layer.appendChild(div);
-    const steps = m.path.length - 1;
-    const frames = m.path.map((pt, i) => ({
-      transform: `translate(${(pt[1] - c0) * PITCH}px, ${(pt[0] - r0) * PITCH}px)`,
-      offset: steps ? i / steps : 1,
-    }));
-    if (div.animate) {
-      div.animate(frames, { duration: total * (steps / maxSteps), easing: 'linear', fill: 'forwards' });
-    } else {
-      div.style.transform = frames[frames.length - 1].transform;
-    }
+    const frames = path.map(([r, c]) => ({ left: `${c * PITCH}px`, top: `${r * PITCH}px` }));
+    maxSteps = Math.max(maxSteps, path.length - 1);
+    div.animate(frames, { duration: (path.length - 1) * STEP_MS, easing: 'linear', fill: 'forwards' });
   }
-
   setTimeout(() => {
     layer.innerHTML = '';
     S.collapsing = null;
     S.grid = finalGrid;
     onDone();
-  }, total + 40);
+  }, maxSteps * STEP_MS + 60);
 }
 
-// Lock delay: a piece that can't fall further doesn't lock instantly — it
-// gets a brief grace period (LOCK_DELAY_MS) during which the player can
-// still move/rotate it. A successful move/rotate while grounded refreshes
-// the grace period, capped at LOCK_DELAY_MAX_RESETS so it can't stall forever.
+// --- lock delay -----------------------------------------------------------
 function resetGroundState() {
-  if (lockDelayTimer) { clearTimeout(lockDelayTimer); lockDelayTimer = null; }
+  lockRemainMs = null;
   S.grounded = false;
   S.lockResets = 0;
 }
-function armLockDelay() {
-  if (lockDelayTimer) clearTimeout(lockDelayTimer);
-  lockDelayTimer = setTimeout(() => {
-    lockDelayTimer = null;
-    if (S.piece && S.grounded && !S.paused && !S.gameOver) lockAndClear(S.piece);
-  }, LOCK_DELAY_MS);
-}
+function armLockDelay() { lockRemainMs = LOCK_DELAY_MS; }
+
+// After a successful move/rotate: refresh the grace period (bounded), or
+// clear it if the piece can fall again.
 function onPieceAdjusted() {
   const grounded = !isPieceValid(pieceStep(S.piece).cells, S.grid, S.piece.dir);
-  if (!grounded) {
-    if (lockDelayTimer) { clearTimeout(lockDelayTimer); lockDelayTimer = null; }
-    S.grounded = false;
+  if (!grounded) { resetGroundState(); return; }
+  if (!S.grounded) {
+    S.grounded = true;
     S.lockResets = 0;
+    armLockDelay();
     return;
   }
-  if (!S.grounded) { S.grounded = true; S.lockResets = 0; armLockDelay(); return; }
-  if (S.lockResets < LOCK_DELAY_MAX_RESETS) { S.lockResets++; armLockDelay(); }
+  if (S.lockResets < LOCK_DELAY_MAX_RESETS) {
+    S.lockResets++;
+    armLockDelay();
+  }
 }
 function applyPieceChange(next) {
-  if (next !== S.piece) { S.piece = next; onPieceAdjusted(); }
+  if (next !== S.piece) {
+    S.piece = next;
+    onPieceAdjusted();
+  }
   update();
 }
 
+// --- gravity ---------------------------------------------------------------
 function tick() {
   if (!S.piece || S.paused || S.gameOver) return;
-  if (S.grounded) return; // waiting out the lock-delay grace period
+  if (S.grounded) return; // grace period; the frame loop counts it down
   const moved = pieceStep(S.piece);
   if (isPieceValid(moved.cells, S.grid, S.piece.dir)) {
     S.piece = moved;
+    if (S.softDrop) addScore(1); // soft-dropped cells score, like classic Tetris
     update();
   } else {
     S.grounded = true;
     S.lockResets = 0;
-    update();
     armLockDelay();
+    update();
   }
 }
 
-function scheduleLoop() {
-  if (loopId) { clearInterval(loopId); loopId = null; }
-  if (S.paused || S.gameOver || !S.piece || S.flash || S.rotating || S.collapsing) return;
+// ===================================================================
+// Main loop — a single requestAnimationFrame driver replaces the old
+// setInterval gravity + setTimeout lock delay: gravity, lock delay, DAS
+// auto-shift and the sprint clock all advance from the same dt, freeze
+// together on pause, and can't drift under load.
+// ===================================================================
+function currentInterval() {
   const base = SPEEDS[S.settings.speed] || 520;
   const lvlScale = Math.pow(0.92, S.level - 1);
-  const interval = Math.max(80, base * lvlScale / (S.softDrop ? S.settings.softDropMult : 1));
-  loopId = setInterval(tick, interval);
+  return Math.max(80, base * lvlScale / (S.softDrop ? S.settings.softDropMult : 1));
+}
+
+function frame(ts) {
+  rafId = requestAnimationFrame(frame);
+  const dt = lastTs == null ? 0 : Math.min(100, ts - lastTs);
+  lastTs = ts;
+  if (S.awaitingStart || S.paused || S.gameOver) return;
+  S.elapsedMs += dt;
+  if (S.mode === 'sprint' && el.time) el.time.textContent = fmtTime(S.elapsedMs);
+  if (!S.piece || S.flash || S.rotating || S.collapsing) return;
+  dasFrame(dt);
+  if (!S.piece || S.gameOver) return;
+  if (S.grounded) {
+    if (lockRemainMs != null) {
+      lockRemainMs -= dt;
+      if (lockRemainMs <= 0) {
+        lockRemainMs = null;
+        lockAndClear(S.piece);
+      }
+    }
+    return;
+  }
+  gravAcc += dt;
+  let steps = 0;
+  while (gravAcc >= currentInterval() && steps++ < SIZE) {
+    gravAcc -= currentInterval();
+    tick();
+    if (!S.piece || S.grounded || S.paused || S.gameOver) { gravAcc = 0; break; }
+  }
+}
+
+// --- DAS/ARR: in-game auto-shift instead of OS key repeat ------------------
+function dasStart(dir) {
+  dasDir = dir;
+  dasTime = 0;
+  arrAcc = 0;
+  action(dir < 0 ? 'left' : 'right');
+}
+function dasStop() {
+  const held = dasHeld.left ? -1 : dasHeld.right ? 1 : 0;
+  if (held) dasStart(held); // the other direction is still held: switch to it
+  else { dasDir = 0; dasTime = 0; arrAcc = 0; }
+}
+function dasFrame(dt) {
+  if (!dasDir) return;
+  dasTime += dt;
+  if (dasTime < DAS_MS) return;
+  arrAcc += dt;
+  while (arrAcc >= ARR_MS) {
+    arrAcc -= ARR_MS;
+    action(dasDir < 0 ? 'left' : 'right');
+  }
+}
+
+// ===================================================================
+// Actions
+// ===================================================================
+const BUFFERABLE = new Set(['left', 'right', 'rotCW', 'rotCCW', 'hold']);
+
+function togglePause() {
+  S.paused = !S.paused;
+  if (S.paused) saveRun();
+  update();
 }
 
 function action(kind) {
   if (S.gameOver || S.awaitingStart) return;
-  if (kind === 'pause') {
-    S.paused = !S.paused;
-    if (S.paused) {
-      if (lockDelayTimer) { clearTimeout(lockDelayTimer); lockDelayTimer = null; }
-    } else if (S.grounded) {
-      if (S.lockResets < LOCK_DELAY_MAX_RESETS) { S.lockResets++; armLockDelay(); }
-      else { lockAndClear(S.piece); return; }
-    }
-    update();
+  if (kind === 'pause') { togglePause(); return; }
+  if (S.paused) return;
+  if (!S.piece || S.rotating || S.collapsing || S.flash) {
+    // An animation owns the board: remember the latest intent and replay it
+    // the moment control returns, instead of eating the press.
+    if (BUFFERABLE.has(kind)) S.buffered = kind;
     return;
   }
-  if (S.paused || !S.piece || S.rotating || S.collapsing) return;
 
-  if (kind === 'left')        applyPieceChange(tryShiftPiece(S.piece, S.grid, -1));
-  else if (kind === 'right')  applyPieceChange(tryShiftPiece(S.piece, S.grid,  1));
-  else if (kind === 'rotCW')  applyPieceChange(tryRotatePiece(S.piece, S.grid, true));
-  else if (kind === 'rotCCW') applyPieceChange(tryRotatePiece(S.piece, S.grid, false));
-  else if (kind === 'hold')   holdSwap();
-  else if (kind === 'hardDrop') {
-    let p = S.piece;
+  if (kind === 'left') {
+    applyPieceChange(tryShiftPiece(S.piece, S.grid, -1));
+  } else if (kind === 'right') {
+    applyPieceChange(tryShiftPiece(S.piece, S.grid, 1));
+  } else if (kind === 'rotCW') {
+    applyPieceChange(tryRotatePiece(S.piece, S.grid, true));
+  } else if (kind === 'rotCCW') {
+    applyPieceChange(tryRotatePiece(S.piece, S.grid, false));
+  } else if (kind === 'hold') {
+    holdSwap();
+  } else if (kind === 'down') {
+    S.softDrop = true;
+    // While grounded, a fresh down input commits the lock immediately —
+    // standard Tetris feel instead of a mushy half-second wait.
+    if (S.grounded) { lockAndClear(S.piece); return; }
+  } else if (kind === 'hardDrop') {
+    let p = S.piece, dist = 0;
     while (true) {
       const next = pieceStep(p);
-      if (isPieceValid(next.cells, S.grid, p.dir)) p = next; else break;
+      if (isPieceValid(next.cells, S.grid, p.dir)) { p = next; dist++; }
+      else break;
     }
+    addScore(dist * 2); // hard-drop distance scores double the soft-drop rate
     lockAndClear(p);
-  }
-  else if (kind === 'bomb') {
-    if (S.collapsing || S.flash || S.bombs <= 0) return;
-    const col = bombColumn(S.piece);
+  } else if (kind === 'bomb') {
+    if (!bombReady()) return;
+    const col = bombColumn();
     const g = cloneGrid(S.grid);
     let removed = 0;
     for (let r = 0; r < SIZE; r++) {
       if (!isCenter(r, col) && g[r][col]) { g[r][col] = null; removed++; }
     }
-    if (removed === 0) return; // nothing to blast — don't waste a charge
-    S.bombs -= 1;
+    if (removed === 0) return;
+    S.bombs--;
+    S.stats.bombsUsed++;
+    S.grid = g;
     const { grid: finalGrid, paths } = computeCollapse(g);
-    // Re-collapse toward the core, then resume the current piece.
     runCollapseAnimation(g, finalGrid, paths, () => {
       resetGroundState();
       if (S.piece && !isPieceValid(S.piece.cells, S.grid, S.piece.dir)) {
-        S.piece = null; spawnFromQueue();
+        S.piece = null;
+        spawnFromQueue();
       } else {
         update();
+        flushBuffered();
       }
     });
-  }
-  else if (kind === 'boardCW' || kind === 'boardCCW') {
+  } else if (kind === 'boardCW' || kind === 'boardCCW') {
     const cw = kind === 'boardCW';
     const newGrid = cw ? rotateGridCW(S.grid) : rotateGridCCW(S.grid);
     if (S.piece && !isPieceValid(S.piece.cells, newGrid, 'N')) return;
@@ -890,17 +1209,55 @@ function action(kind) {
       S.rotating = null;
       resetGroundState();
       update();
+      flushBuffered();
     }, 320);
   }
 }
 
-// Resets all run state and (re)builds the board at the given size. Used both
-// for the initial field-size pick and for restarting after game over.
-function startNewRun(size) {
+// The bomb clears the column under the current piece's pivot cell.
+function bombColumn() {
+  if (!S.piece) return CENTER;
+  const [, pc] = S.piece.cells[1] || S.piece.cells[0];
+  return Math.min(SIZE - 1, Math.max(0, pc));
+}
+function bombReady() {
+  return S.bombs > 0 && S.piece && !S.paused && !S.gameOver && !S.rotating && !S.collapsing && !S.flash;
+}
+
+// During a soft-drop drag on the touch board: advance one cell without ever
+// committing a lock (a drag should not trigger the grounded insta-lock).
+function gestureSoftStep() {
+  if (!S.piece || S.paused || S.gameOver || S.rotating || S.collapsing || S.flash) return;
+  if (S.grounded) return;
+  const moved = pieceStep(S.piece);
+  if (isPieceValid(moved.cells, S.grid, S.piece.dir)) {
+    S.piece = moved;
+    addScore(1);
+    update();
+  } else {
+    S.grounded = true;
+    S.lockResets = 0;
+    armLockDelay();
+    update();
+  }
+}
+
+// ===================================================================
+// Run lifecycle
+// ===================================================================
+// Resets all run state and (re)builds the board for the given size + mode.
+function startNewRun(size, mode) {
+  mode = MODE_INFO[mode] ? mode : 'classic';
+  if (mode === 'daily') size = DAILY_SIZE;
+  if (!GRID_SIZES.includes(size)) size = 31;
   S.awaitingStart = false;
   configureGrid(size);
   S.settings.gridSize = size;
   saveSettings(S.settings);
+  S.mode = mode;
+  S.rngState = mode === 'daily'
+    ? hashStr('quadtris-' + todayStr())
+    : (Math.floor(Math.random() * 4294967296) >>> 0);
   S.grid = emptyGrid();
   S.piece = null;
   S.hold = null;
@@ -913,542 +1270,948 @@ function startNewRun(size) {
   S.level = 1;
   S.paused = false;
   S.gameOver = false;
+  S.winner = false;
   S.flash = null;
   S.rotating = null;
   S.collapsing = null;
   S.bombs = BOMB_START;
+  S.softDrop = false;
+  S.lastDifficult = false;
+  S.buffered = null;
+  S.deathCause = null;
+  S.deathCells = null;
+  S.newBest = false;
+  S.stats = newStats();
+  S.elapsedMs = 0;
+  gravAcc = 0;
+  clearSavedRun();
   resetGroundState();
   buildShell();
   spawnFromQueue();
 }
 
-function restart() {
-  startNewRun(SIZE);
+function restart() { startNewRun(SIZE, S.mode); }
+
+function backToMenu() {
+  S.awaitingStart = true;
+  S.gameOver = false;
+  S.winner = false;
+  S.paused = false;
+  S.piece = null;
+  S.flash = null;
+  S.rotating = null;
+  S.collapsing = null;
+  S.deathCause = null;
+  S.deathCells = null;
+  S.grid = emptyGrid();
+  update();
 }
 
+// Rehydrate a saved run (RESUME RUN on the start menu).
+function resumeRun(run) {
+  S.awaitingStart = false;
+  configureGrid(run.size);
+  S.mode = run.mode;
+  S.grid = run.grid;
+  S.piece = run.piece;
+  S.bag = run.bag || [];
+  S.nextType = run.nextType;
+  S.nextSide = run.nextSide;
+  S.hold = run.hold != null ? run.hold : null;
+  S.holdUsed = !!run.holdUsed;
+  S.score = run.score || 0;
+  S.ringsCleared = run.ringsCleared || 0;
+  S.level = run.level || 1;
+  S.bombs = typeof run.bombs === 'number' ? run.bombs : BOMB_START;
+  S.rngState = (run.rngState || 0) >>> 0;
+  S.lastDifficult = !!run.lastDifficult;
+  S.stats = { ...newStats(), ...(run.stats || {}) };
+  S.elapsedMs = run.elapsedMs || 0;
+  S.paused = false;
+  S.gameOver = false;
+  S.winner = false;
+  S.flash = null;
+  S.rotating = null;
+  S.collapsing = null;
+  S.softDrop = false;
+  S.buffered = null;
+  S.deathCause = null;
+  S.deathCells = null;
+  S.newBest = false;
+  gravAcc = 0;
+  resetGroundState();
+  buildShell();
+  if (!S.piece) spawnFromQueue();
+  else update();
+}
 // ===================================================================
-// Rendering (plain DOM)
+// Rendering
 // ===================================================================
-const el = {}; // cached element refs
+const el = {};                       // cached element refs, refreshed by buildShell()
+let cellEls = null, cellPrev = null; // persistent per-cell divs + last-drawn state key
+let bombAimLast = null;
+let overlayKey = null;
 
-function gridStyle(topLeft) {
-  const off = topLeft ? 'top:0;left:0;' : 'top:8px;left:8px;';
-  return `position:absolute;${off}width:${BOARD_PX}px;height:${BOARD_PX}px;`
-       + `display:grid;grid-template-columns:repeat(${SIZE},${CELL_PX}px);`
-       + `grid-template-rows:repeat(${SIZE},${CELL_PX}px);gap:${GAP_PX}px;`;
+function cellGridCSS(inset0) {
+  const pos = inset0
+    ? 'position:absolute;inset:0;'
+    : `position:absolute;top:8px;left:8px;width:${BOARD_PX}px;height:${BOARD_PX}px;`;
+  return pos + `display:grid;grid-template-rows:repeat(${SIZE}, ${CELL_PX}px);`
+    + `grid-template-columns:repeat(${SIZE}, ${CELL_PX}px);gap:${GAP_PX}px;`;
 }
 
-function buildShell() {
-  const root = document.getElementById('root');
-  root.innerHTML = `
-    <div class="app">
-      <div class="frame">
-        <header class="header">
-          <div class="brand">
-            <svg width="34" height="34" viewBox="0 0 34 34" style="display:block">
-              <rect x="2"  y="2"  width="30" height="30" rx="3" fill="none" stroke="var(--fg-mute)" stroke-width="1.5"/>
-              <rect x="7"  y="7"  width="20" height="20" rx="2" fill="none" stroke="var(--fg-2)"    stroke-width="1.5"/>
-              <rect x="12" y="12" width="10" height="10" rx="1.5" fill="var(--core)"/>
-            </svg>
-            <div>
-              <div class="wordmark">QUADTRIS</div>
-              <div class="tagline">build outward &middot; clear the rings</div>
-            </div>
-          </div>
-          <div class="stats">
-            <div class="stat"><div class="stat-label">SCORE</div><div class="mono stat-value" id="q-score">000000</div></div>
-            <div class="stat"><div class="stat-label">RINGS</div><div class="mono stat-value" id="q-rings">00</div></div>
-            <div class="stat"><div class="stat-label">LEVEL</div><div class="mono stat-value" id="q-level">01</div></div>
-          </div>
-        </header>
+function pieceShapeSVG(type, cell) {
+  const shape = PIECE_SHAPES[type];
+  const rows = Math.max(...shape.map(c => c[0])) + 1;
+  const cols = Math.max(...shape.map(c => c[1])) + 1;
+  const g = 2;
+  const w = cols * cell + (cols - 1) * g, h = rows * cell + (rows - 1) * g;
+  const rects = shape.map(([r, c]) =>
+    `<rect x="${c * (cell + g)}" y="${r * (cell + g)}" width="${cell}" height="${cell}" rx="2.5" fill="${PIECE_COLORS[type]}"/>`
+  ).join('');
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">${rects}</svg>`;
+}
 
-        <div class="middle">
-          <div class="mobile-hud" id="q-mobile-hud">
-            <div class="mobile-hud-item">
-              <div class="mobile-hud-label">HOLD</div>
-              <div class="mobile-hud-preview" id="q-hold-mobile"></div>
-            </div>
-            <div class="mobile-hud-item">
-              <div class="mobile-hud-label">NEXT</div>
-              <div class="mobile-hud-preview" id="q-next-mobile"></div>
-            </div>
-          </div>
-
-          <aside class="rail">
-            <section class="panel"><div class="panel-title">HOLD</div><div class="panel-body" id="q-hold"></div></section>
-            <section class="panel"><div class="panel-title">NEXT</div><div class="panel-body" id="q-next"></div></section>
-            <section class="panel"><div class="panel-title">CURRENT</div><div class="panel-body" id="q-current"></div></section>
-            <section class="panel"><div class="panel-title">HINT</div><div class="panel-body">
-              <div class="hint">Pieces fall from <strong>above</strong> &mdash; every locked piece must stay <strong>connected to the core</strong>, or it's game over.
-              Complete a concentric square to clear it; the remaining cells are then <strong>pulled back toward the core</strong>.</div>
-            </div></section>
-          </aside>
-
-          <div class="board-outer" id="q-board-outer">
-            <div id="q-scale" style="width:${NATIVE}px;height:${NATIVE}px;transform-origin:center center;position:relative;display:flex;align-items:center;justify-content:center;">
-              <div style="position:relative;width:${BOARD_PX + 16}px;height:${BOARD_PX + 16}px;">
-                <div class="arrows-layer" id="q-arrows"></div>
-                <div class="board" style="width:${BOARD_PX + 16}px;height:${BOARD_PX + 16}px;position:relative;">
-                  <div class="q-grid" id="q-bg" style="${gridStyle(false)}"></div>
-                  <div id="q-bombaim" style="position:absolute;top:8px;width:${CELL_PX}px;height:${BOARD_PX}px;background:var(--warn);opacity:0.16;border-radius:3px;pointer-events:none;display:none;"></div>
-                  <div id="q-rotwrap" style="position:absolute;top:8px;left:8px;width:${BOARD_PX}px;height:${BOARD_PX}px;pointer-events:none;transform-origin:center center;will-change:transform;"></div>
-                  <div id="q-collapse" style="position:absolute;top:8px;left:8px;width:${BOARD_PX}px;height:${BOARD_PX}px;pointer-events:none;"></div>
-                  <div class="q-grid" id="q-pieces" style="${gridStyle(false)}pointer-events:none;"></div>
-                </div>
-                <div id="q-overlay"></div>
-              </div>
-            </div>
-          </div>
-
-          <aside class="rail">
-            <section class="panel"><div class="panel-title">CONTROLS</div><div class="panel-body">
-              <div class="controls">
-                <div class="ctrl-row"><span class="ctrl-k">Move</span><span class="mono ctrl-v">&larr; &rarr;</span></div>
-                <div class="ctrl-row"><span class="ctrl-k">Rotate piece</span><span class="mono ctrl-v">&uarr; / Z</span></div>
-                <div class="ctrl-row"><span class="ctrl-k">Soft drop</span><span class="mono ctrl-v">&darr;</span></div>
-                <div class="ctrl-row"><span class="ctrl-k">Hard drop</span><span class="mono ctrl-v">SPACE</span></div>
-                <div class="ctrl-row"><span class="ctrl-k">Hold piece</span><span class="mono ctrl-v">C</span></div>
-                <div class="ctrl-row"><span class="ctrl-k">Rotate board</span><span class="mono ctrl-v">R / E</span></div>
-                <div class="ctrl-row"><span class="ctrl-k">Bomb column</span><span class="mono ctrl-v">B</span></div>
-                <div class="ctrl-row"><span class="ctrl-k">Pause</span><span class="mono ctrl-v">P</span></div>
-              </div>
-            </div></section>
-            <section class="panel"><div class="panel-title">ACTIONS</div><div class="panel-body">
-              <div class="actions-col">
-                <button class="big-btn" data-act="boardCCW"><span class="big-btn-label">ROTATE ◐</span><span class="mono big-btn-sub">board ccw &middot; E</span></button>
-                <button class="big-btn" data-act="boardCW"><span class="big-btn-label">ROTATE ◑</span><span class="mono big-btn-sub">board cw &middot; R</span></button>
-                <button class="big-btn" data-act="hold" id="q-hold-btn"><span class="big-btn-label">HOLD</span><span class="mono big-btn-sub">swap &middot; C</span></button>
-                <button class="big-btn" data-act="bomb" id="q-bomb-btn"><span class="big-btn-label" id="q-bomb-label">BOMB &times;3</span><span class="mono big-btn-sub">column &middot; B</span></button>
-                <button class="big-btn" data-act="pause"><span class="big-btn-label" id="q-pause-label">PAUSE</span><span class="mono big-btn-sub">P</span></button>
-              </div>
-            </div></section>
-          </aside>
-
-          <div class="touch-controls" id="q-touch">
-            <div class="touch-row">
-              <button class="touch-btn small" data-act="boardCCW">◐</button>
-              <button class="touch-btn small" data-act="hold"><span id="q-touch-hold-label">HOLD</span></button>
-              <button class="touch-btn small" data-act="bomb"><span id="q-touch-bomb-label">BOMB</span></button>
-              <button class="touch-btn small" data-act="pause"><span id="q-touch-pause-label">PAUSE</span></button>
-              <button class="touch-btn small" data-act="boardCW">◑</button>
-            </div>
-            <div class="touch-row">
-              <button class="touch-btn" data-act="rotCCW">&#8634;</button>
-              <button class="touch-btn small" data-act="hardDrop">DROP</button>
-              <button class="touch-btn" data-act="rotCW">&#8635;</button>
-            </div>
-            <div class="touch-row">
-              <button class="touch-btn" id="q-touch-left">&larr;</button>
-              <button class="touch-btn" id="q-touch-down">&darr;</button>
-              <button class="touch-btn" id="q-touch-right">&rarr;</button>
-            </div>
-          </div>
-        </div>
-
-        <footer class="footer">
-          <span class="mono footer-cell">v0.1 &middot; prototype</span>
-          <span class="footer-cell">QUADTRIS &middot; a center-out tetromino game</span>
-          <button class="mono footer-btn" id="q-open-tweaks">open tweaks ↗</button>
-        </footer>
-      </div>
-    </div>
-
-    <div class="settings" id="q-settings">
-      <div class="settings-hd"><b>Tweaks</b><button class="settings-x" id="q-settings-x">✕</button></div>
-      <div class="set-sect">Game</div>
-      <div class="set-row"><label>Speed</label>
-        <select class="set-field" id="set-speed">
-          <option>Chill</option><option>Medium</option><option>Brisk</option><option>Fast</option>
-        </select></div>
-      <div class="set-row"><label>Soft drop &times;</label>
-        <input type="range" id="set-softdrop" min="2" max="12" step="1"><span class="val" id="set-softdrop-val"></span></div>
-      <div class="set-row"><label>Field size</label>
-        <select class="set-field" id="set-gridsize">
-          ${GRID_SIZES.map(sz => `<option value="${sz}">${sz}&times;${sz}</option>`).join('')}
-        </select></div>
-      <div class="set-sect">Display</div>
-      <div class="set-row"><label>Show landing hint</label>
-        <button class="toggle" id="set-hint"><i></i></button></div>
-      <div class="set-row"><label>Show ring outlines</label>
-        <button class="toggle" id="set-rings"><i></i></button></div>
-    </div>
-  `;
-
-  // Static background grid layer (built once).
-  const bg = document.getElementById('q-bg');
-  let html = '';
-  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-    if (isCenter(r, c)) continue;
-    html += `<div style="grid-row:${r + 1};grid-column:${c + 1};background:var(--bg-2);border:1px solid var(--line-soft);border-radius:4px;"></div>`;
+function renderNext() {
+  el.next.innerHTML = S.nextType ? pieceShapeSVG(S.nextType, 14) : '<div class="placeholder">—</div>';
+  if (el.nextMobile) {
+    el.nextMobile.innerHTML = S.nextType ? pieceShapeSVG(S.nextType, 7) : '—';
+    el.nextMobile.classList.toggle('empty', !S.nextType);
   }
-  bg.innerHTML = html;
-
-  // Static N spawn arrow.
-  document.getElementById('q-arrows').innerHTML =
-    `<div class="arrow" style="top:-26px;left:50%;transform:translateX(-50%);opacity:1;">`
-    + `<span class="arrow-glyph" style="color:var(--accent);">${DIR_ARROW.N}</span></div>`;
-
-  // cache refs
-  el.score = document.getElementById('q-score');
-  el.rings = document.getElementById('q-rings');
-  el.level = document.getElementById('q-level');
-  el.next = document.getElementById('q-next');
-  el.hold = document.getElementById('q-hold');
-  el.nextMobile = document.getElementById('q-next-mobile');
-  el.holdMobile = document.getElementById('q-hold-mobile');
-  el.current = document.getElementById('q-current');
-  el.rotwrap = document.getElementById('q-rotwrap');
-  el.collapse = document.getElementById('q-collapse');
-  el.bombAim = document.getElementById('q-bombaim');
-  el.bombLabel = document.getElementById('q-bomb-label');
-  el.bombBtn = document.getElementById('q-bomb-btn');
-  el.pieces = document.getElementById('q-pieces');
-  el.overlay = document.getElementById('q-overlay');
-  el.pauseLabel = document.getElementById('q-pause-label');
-  el.scale = document.getElementById('q-scale');
-  el.boardOuter = document.getElementById('q-board-outer');
-  el.touchBombLabel = document.getElementById('q-touch-bomb-label');
-  el.touchPauseLabel = document.getElementById('q-touch-pause-label');
-
-  wireEvents();
-  wireSettings();
-  wireTouchControls();
-  observeScale();
 }
 
-function ringOverlaySVG() {
-  let rects = '';
-  for (const k of [1, 2, 3, 4]) {
+function renderHold() {
+  el.hold.innerHTML = S.hold ? pieceShapeSVG(S.hold, 14) : '<div class="placeholder">empty</div>';
+  el.hold.style.opacity = S.holdUsed ? '0.45' : '1';
+  if (el.holdMobile) {
+    el.holdMobile.innerHTML = S.hold ? pieceShapeSVG(S.hold, 7) : '—';
+    el.holdMobile.classList.toggle('empty', !S.hold);
+    el.holdMobile.style.opacity = S.holdUsed ? '0.45' : '1';
+  }
+}
+
+function renderCurrent() {
+  if (!S.piece) { el.current.innerHTML = '<div class="placeholder">—</div>'; return; }
+  el.current.innerHTML = `<div class="current-row">${pieceShapeSVG(S.piece.type, 12)}<div>`
+    + `<div class="piece-tag mono" style="color:${S.piece.color};border-color:${S.piece.color};">${S.piece.type}</div>`
+    + `<div class="kicker" style="margin-top:6px;">SOUTHBOUND ${DIR_ARROW[S.piece.dir]}</div>`
+    + `</div></div>`;
+}
+
+// Static background: faint cell pads + the solid golden core block.
+function buildBackground() {
+  const bg = el.bg;
+  bg.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      if (isCenter(r, c)) continue;
+      const d = document.createElement('div');
+      d.style.cssText = `grid-row:${r + 1};grid-column:${c + 1};background:var(--bg-2);border-radius:4px;opacity:0.5;`;
+      frag.appendChild(d);
+    }
+  }
+  bg.appendChild(frag);
+  const PITCH = CELL_PX + GAP_PX;
+  const core = document.createElement('div');
+  const x = (CENTER - 1) * PITCH;
+  const sz = 3 * CELL_PX + 2 * GAP_PX;
+  core.style.cssText = `position:absolute;left:${x}px;top:${x}px;width:${sz}px;height:${sz}px;`
+    + `border-radius:6px;background:linear-gradient(135deg, var(--core), var(--core-2));`
+    + `display:flex;align-items:center;justify-content:center;color:var(--bg);`
+    + `font-size:10px;font-weight:700;letter-spacing:0.18em;box-shadow:0 0 18px rgba(0,0,0,0.35);`;
+  core.textContent = 'CORE';
+  bg.appendChild(core);
+}
+
+// Persistent board layers: ring-outline SVG (one rect per ring, restyled by
+// renderRingOutlines) and one div per playable cell (mutated in place by
+// renderCells — no more full innerHTML rebuild per gravity tick).
+function buildBoardLayers() {
+  const wrap = el.rotwrap;
+  wrap.innerHTML = '';
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${BOARD_PX} ${BOARD_PX}`);
+  svg.setAttribute('aria-hidden', 'true');
+  svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none;';
+  const PITCH = CELL_PX + GAP_PX;
+  el.ringRects = [];
+  for (let k = 1; k <= N_RINGS; k++) {
     const d = k + 1;
-    const startCell = CENTER - d;
+    const x = (CENTER - d) * PITCH - GAP_PX / 2;
     const span = 2 * d + 1;
-    const x = startCell * (CELL_PX + GAP_PX) - GAP_PX / 2;
     const sz = span * CELL_PX + (span - 1) * GAP_PX + GAP_PX;
-    rects += `<rect x="${x}" y="${x}" width="${sz}" height="${sz}" rx="4" fill="none" stroke="var(--line)" stroke-width="1" stroke-dasharray="2 4" opacity="0.55"/>`;
+    const rect = document.createElementNS(svgNS, 'rect');
+    rect.setAttribute('x', String(x));
+    rect.setAttribute('y', String(x));
+    rect.setAttribute('width', String(sz));
+    rect.setAttribute('height', String(sz));
+    rect.setAttribute('rx', '4');
+    rect.setAttribute('fill', 'none');
+    rect.setAttribute('stroke', 'var(--line)');
+    rect.setAttribute('stroke-dasharray', '2 4');
+    svg.appendChild(rect);
+    el.ringRects.push(rect);
   }
-  return `<svg style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;" viewBox="0 0 ${BOARD_PX} ${BOARD_PX}">${rects}</svg>`;
+  el.ringsSvg = svg;
+  wrap.appendChild(svg);
+
+  const gridEl = document.createElement('div');
+  gridEl.style.cssText = cellGridCSS(true);
+  cellEls = [];
+  cellPrev = [];
+  for (let r = 0; r < SIZE; r++) {
+    const rowE = [], rowP = [];
+    for (let c = 0; c < SIZE; c++) {
+      if (isCenter(r, c)) { rowE.push(null); rowP.push(''); continue; }
+      const d = document.createElement('div');
+      d.style.cssText = `grid-row:${r + 1};grid-column:${c + 1};border-radius:4px;display:none;border:1px solid rgba(255,255,255,0.12);`;
+      gridEl.appendChild(d);
+      rowE.push(d);
+      rowP.push('');
+    }
+    cellEls.push(rowE);
+    cellPrev.push(rowP);
+  }
+  wrap.appendChild(gridEl);
 }
 
-function coreLabelHTML() {
-  const start = CENTER; // 1-indexed grid start covering CENTER-1..CENTER+1
-  return `<div style="grid-row:${start} / span 3;grid-column:${start} / span 3;position:relative;`
-    + `background:linear-gradient(135deg, var(--core) 0%, var(--core-2) 100%);border-radius:6px;`
-    + `display:flex;align-items:center;justify-content:center;`
-    + `box-shadow:inset 0 0 0 1px rgba(0,0,0,0.18), 0 0 28px oklch(0.55 0.06 80 / 0.35);">`
-    + `<svg width="60" height="60" viewBox="0 0 78 78">`
-    + `<rect x="6" y="6" width="66" height="66" rx="6" fill="none" stroke="rgba(0,0,0,0.25)" stroke-width="1.5"/>`
-    + `<rect x="20" y="20" width="38" height="38" rx="4" fill="none" stroke="rgba(0,0,0,0.35)" stroke-width="1.5"/>`
-    + `<rect x="33" y="33" width="12" height="12" rx="2" fill="rgba(0,0,0,0.6)"/></svg></div>`;
-}
-
-function renderRotWrap() {
+function renderCells() {
   const flashing = new Set();
   if (S.flash) for (const k of S.flash.rings) for (const [r, c] of ringCells(k)) flashing.add(`${r},${c}`);
-
-  let inner = '';
-  if (S.settings.showRings) inner += ringOverlaySVG();
-  inner += `<div class="q-grid" style="${gridStyle(true)}">`;
-  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-    if (isCenter(r, c)) continue;
-    const key = `${r},${c}`;
-    // Cells mid-collapse are drawn by the animation overlay, not here.
-    if (S.collapsing && S.collapsing.finals.has(key)) continue;
-    const locked = S.grid[r][c];
-    const flashHere = flashing.has(key);
-    if (!locked && !flashHere) continue;
-    const shadow = flashHere ? 'inset 0 0 0 2px var(--fg), 0 0 14px var(--fg)' : 'none';
-    inner += `<div style="grid-row:${r + 1};grid-column:${c + 1};background:${locked || 'transparent'};`
-      + `border:1px solid rgba(255,255,255,0.12);border-radius:4px;box-shadow:${shadow};"></div>`;
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const div = cellEls[r][c];
+      if (!div) continue;
+      const key = `${r},${c}`;
+      const color = S.grid[r][c];
+      // Cells whose collapse animation is in flight stay hidden until it lands.
+      const hidden = S.collapsing && S.collapsing.finals.has(key);
+      const flashHere = flashing.has(key);
+      const death = S.deathCells && S.deathCells.has(key);
+      const state = hidden || !color ? '' : `${color}|${flashHere ? 1 : 0}|${death ? 1 : 0}`;
+      if (cellPrev[r][c] === state) continue;
+      cellPrev[r][c] = state;
+      if (!state) { div.style.display = 'none'; continue; }
+      div.style.display = 'block';
+      div.style.background = color;
+      div.style.boxShadow = flashHere
+        ? 'inset 0 0 0 2px var(--fg), 0 0 14px var(--fg)'
+        : death ? 'inset 0 0 0 2px var(--warn), 0 0 12px var(--warn)' : 'none';
+    }
   }
-  inner += coreLabelHTML();
-  inner += `</div>`;
+}
 
-  // Recreate the rotating wrapper element so the rotation animation restarts
-  // (mirrors the prototype's keyed remount).
-  el.rotwrap.className = S.rotating ? `q-rot-${S.rotating.dir}` : '';
-  el.rotwrap.innerHTML = inner;
+function renderBoardSpin() {
+  const want = S.rotating ? (S.rotating.dir === 'cw' ? 'q-rot-cw' : 'q-rot-ccw') : '';
+  if (el.rotwrap.dataset.spin === want) return;
+  el.rotwrap.dataset.spin = want;
+  el.rotwrap.classList.remove('q-rot-cw', 'q-rot-ccw');
+  if (want) {
+    void el.rotwrap.offsetWidth;
+    el.rotwrap.classList.add(want);
+  }
+}
+
+// All rings outlined faintly; the incomplete ring closest to completion
+// (≥75% filled) is highlighted so the outline carries information.
+function renderRingOutlines() {
+  if (!el.ringsSvg) return;
+  el.ringsSvg.style.display = S.settings.showRings ? '' : 'none';
+  if (!S.settings.showRings) return;
+  let bestK = 0, bestFill = 0;
+  for (let k = 1; k <= N_RINGS; k++) {
+    const cells = ringCells(k);
+    let filled = 0;
+    for (const [r, c] of cells) if (S.grid[r][c]) filled++;
+    const f = filled / cells.length;
+    if (f < 1 && f > bestFill) { bestFill = f; bestK = k; }
+  }
+  for (let k = 1; k <= N_RINGS; k++) {
+    const rect = el.ringRects[k - 1];
+    const hot = k === bestK && bestFill >= 0.75;
+    rect.setAttribute('stroke', hot ? 'var(--accent)' : 'var(--line)');
+    rect.setAttribute('opacity', hot ? '0.9' : '0.28');
+    rect.setAttribute('stroke-width', hot ? '1.5' : '1');
+  }
+}
+
+// Warn tint on any board edge the stack has grown within 3 cells of.
+function renderDanger() {
+  const M = 3;
+  let n = false, s = false, w = false, e = false;
+  if (S.mode !== 'zen' && !S.awaitingStart && S.grid) {
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (!S.grid[r][c]) continue;
+        if (r < M) n = true;
+        if (r >= SIZE - M) s = true;
+        if (c < M) w = true;
+        if (c >= SIZE - M) e = true;
+      }
+    }
+  }
+  el.dangerN.classList.toggle('on', n);
+  el.dangerS.classList.toggle('on', s);
+  el.dangerW.classList.toggle('on', w);
+  el.dangerE.classList.toggle('on', e);
+}
+
+function renderBombAim() {
+  const key = bombReady() && S.piece ? String(bombColumn()) : '';
+  if (key === bombAimLast) return;
+  bombAimLast = key;
+  if (!key) { el.bombAim.innerHTML = ''; return; }
+  const col = Number(key);
+  const PITCH = CELL_PX + GAP_PX;
+  el.bombAim.innerHTML = `<div style="position:absolute;top:0;bottom:0;left:${col * PITCH - GAP_PX / 2}px;`
+    + `width:${CELL_PX + GAP_PX}px;`
+    + `background:linear-gradient(to bottom, transparent, oklch(0.78 0.16 30 / 0.10), transparent);`
+    + `border-left:1px dashed oklch(0.78 0.16 30 / 0.35);border-right:1px dashed oklch(0.78 0.16 30 / 0.35);"></div>`;
 }
 
 function renderPieces() {
   const piece = S.piece;
-  const ghost = ghostPiece();
   let html = '';
-
-  if (ghost && piece) {
-    const pieceKeys = new Set(piece.cells.map(([r, c]) => `${r},${c}`));
-    for (const [r, c] of ghost.cells) {
-      if (!inBounds(r, c) || pieceKeys.has(`${r},${c}`) || S.grid[r][c]) continue;
-      html += `<div style="grid-row:${r + 1};grid-column:${c + 1};position:relative;">`
-        + `<div style="position:absolute;inset:4px;border-radius:3px;border:1.5px dashed ${ghost.color};opacity:0.5;"></div></div>`;
-    }
-  }
   if (piece) {
+    const ghost = ghostPiece();
+    if (ghost) {
+      // The ghost turns into a pulsing warn outline when locking at the
+      // landing spot would end the run (disconnect or off-board).
+      const fatal = ghostFatal(ghost);
+      const pieceKeys = new Set(piece.cells.map(([r, c]) => `${r},${c}`));
+      const col = fatal ? 'var(--warn)' : ghost.color;
+      for (const [r, c] of ghost.cells) {
+        if (!inBounds(r, c) || pieceKeys.has(`${r},${c}`)) continue;
+        html += `<div style="grid-row:${r + 1};grid-column:${c + 1};position:relative;">`
+          + `<div style="position:absolute;inset:3px;border-radius:3px;border:1.5px dashed ${col};`
+          + `opacity:${fatal ? 0.95 : 0.45};${fatal ? 'animation:q-ghost-warn 700ms ease-in-out infinite;' : ''}"></div></div>`;
+      }
+    }
     for (const [r, c] of piece.cells) {
       if (!inBounds(r, c)) continue;
       html += `<div style="grid-row:${r + 1};grid-column:${c + 1};background:${piece.color};`
-        + `border:1px solid rgba(255,255,255,0.18);border-radius:4px;box-shadow:0 0 8px ${piece.color};"></div>`;
+        + `border-radius:4px;border:1px solid rgba(255,255,255,0.25);box-shadow:0 0 10px ${piece.color};"></div>`;
     }
   }
   el.pieces.innerHTML = html;
 }
 
-// The column a bomb would hit: the column under the current piece's pivot.
-function bombColumn(piece) {
-  const pivot = piece.cells[1] || piece.cells[0];
-  return Math.max(0, Math.min(SIZE - 1, pivot[1]));
+// --- transient feedback -----------------------------------------------------
+function showBanner(text) {
+  if (!el.banner) return;
+  el.banner.textContent = text;
+  el.banner.classList.remove('show');
+  void el.banner.offsetWidth;
+  el.banner.classList.add('show');
+  if (bannerTimer) clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(() => el.banner && el.banner.classList.remove('show'), 1450);
 }
-function bombReady() {
-  return !!(S.piece && S.bombs > 0 && !S.paused && !S.gameOver
-    && !S.rotating && !S.collapsing && !S.flash);
+function bumpStat(elm) {
+  if (!elm) return;
+  elm.classList.remove('bump');
+  void elm.offsetWidth;
+  elm.classList.add('bump');
 }
-function renderBombAim() {
-  if (!bombReady()) { el.bombAim.style.display = 'none'; return; }
-  const col = bombColumn(S.piece);
-  el.bombAim.style.display = 'block';
-  el.bombAim.style.left = (8 + col * (CELL_PX + GAP_PX)) + 'px';
-}
-
-// Renders a tetromino into a fixed 4x2-cell bounding box, centered. Shared by
-// the NEXT and HOLD previews (desktop rail panels + compact mobile HUD).
-function pieceShapeSVG(type, side, cell) {
-  const p = spawnPiece(type, side || 'N');
-  let minR = Infinity, minC = Infinity, maxR = -Infinity, maxC = -Infinity;
-  for (const [r, c] of p.cells) { minR = Math.min(minR, r); minC = Math.min(minC, c); maxR = Math.max(maxR, r); maxC = Math.max(maxC, c); }
-  const h = maxR - minR + 1, w = maxC - minC + 1;
-  const padX = (4 - w) / 2, padY = (2 - h) / 2;
-  let rects = '';
-  for (const [r, c] of p.cells) {
-    rects += `<rect x="${4 + (c - minC + padX) * cell}" y="${4 + (r - minR + padY) * cell}" `
-      + `width="${cell - 2}" height="${cell - 2}" rx="2" fill="${p.color}"/>`;
-  }
-  const svg = `<svg width="${4 * cell + 8}" height="${2 * cell + 8}" viewBox="0 0 ${4 * cell + 8} ${2 * cell + 8}">${rects}</svg>`;
-  return { svg, color: p.color };
+// Screen-reader announcements (aria-live region).
+function announce(msg) {
+  if (el.live) el.live.textContent = msg;
 }
 
-function renderNext() {
-  if (!S.nextType) {
-    el.next.innerHTML = `<div class="preview-box placeholder">&mdash;</div>`;
-    if (el.nextMobile) { el.nextMobile.classList.add('empty'); el.nextMobile.innerHTML = '&mdash;'; }
-    return;
-  }
-  const { svg, color } = pieceShapeSVG(S.nextType, S.nextSide, 16);
-  el.next.innerHTML = `<div class="preview-box">${svg}`
-    + `<div class="piece-tag mono" style="color:${color};border-color:${color};">${S.nextType}</div></div>`;
-  if (el.nextMobile) {
-    el.nextMobile.classList.remove('empty');
-    el.nextMobile.innerHTML = pieceShapeSVG(S.nextType, S.nextSide, 10).svg;
-  }
-}
-
-function renderHold() {
-  if (S.hold == null) {
-    el.hold.innerHTML = `<div class="preview-box placeholder">&mdash;</div>`;
-    if (el.holdMobile) { el.holdMobile.classList.add('empty'); el.holdMobile.innerHTML = '&mdash;'; }
-    return;
-  }
-  const { svg, color } = pieceShapeSVG(S.hold, 'N', 16);
-  const dim = S.holdUsed ? 'opacity:0.4;' : '';
-  el.hold.innerHTML = `<div class="preview-box" style="${dim}">${svg}`
-    + `<div class="piece-tag mono" style="color:${color};border-color:${color};">${S.hold}</div></div>`;
-  if (el.holdMobile) {
-    el.holdMobile.classList.remove('empty');
-    el.holdMobile.style.opacity = S.holdUsed ? '0.4' : '1';
-    el.holdMobile.innerHTML = pieceShapeSVG(S.hold, 'N', 10).svg;
-  }
-}
-
-function renderCurrent() {
-  if (!S.piece) { el.current.innerHTML = `<div class="placeholder">&mdash;</div>`; return; }
-  const p = S.piece;
-  el.current.innerHTML = `<div class="current-row">`
-    + `<div class="mono piece-tag" style="color:${p.color};border-color:${p.color};">${p.type}</div>`
-    + `<div style="display:flex;flex-direction:column;gap:4px;">`
-    + `<div class="kicker">FALLING</div><div class="mono from-val">SOUTHBOUND</div></div></div>`;
-}
-
+// --- overlays ---------------------------------------------------------------
 function renderOverlay() {
-  if (S.awaitingStart) {
-    el.overlay.innerHTML = `<div class="overlay"><div class="overlay-inner">`
-      + `<div class="overlay-title">QUADTRIS</div><div class="overlay-sub">choose a field size</div>`
-      + `<div class="size-pick">`
-      + GRID_SIZES.map(sz => `<button class="overlay-btn" data-size="${sz}">${sz}&times;${sz}</button>`).join('')
-      + `</div></div></div>`;
-    for (const btn of el.overlay.querySelectorAll('[data-size]')) {
-      btn.addEventListener('click', () => startNewRun(Number(btn.dataset.size)));
-    }
-  } else if (S.paused && !S.gameOver) {
-    el.overlay.innerHTML = `<div class="overlay"><div class="overlay-inner">`
-      + `<div class="overlay-title">PAUSED</div><div class="overlay-sub">press P to resume</div></div></div>`;
-  } else if (S.gameOver) {
-    el.overlay.innerHTML = `<div class="overlay"><div class="overlay-inner">`
-      + `<div class="overlay-title">GAME OVER</div><div class="overlay-sub">press ENTER to restart</div>`
-      + `<button class="overlay-btn" id="q-restart">RESTART</button></div></div>`;
-    document.getElementById('q-restart').addEventListener('click', restart);
-  } else {
-    el.overlay.innerHTML = '';
-  }
+  const key = S.awaitingStart ? `menu:${menuMode}:${menuSize}`
+    : S.gameOver ? `over:${S.winner ? 1 : 0}`
+    : S.paused ? 'paused' : '';
+  if (key === overlayKey) return;
+  overlayKey = key;
+  if (S.awaitingStart) { renderStartMenu(); return; }
+  if (S.gameOver) { renderGameOver(); return; }
+  if (S.paused) { renderPaused(); return; }
+  el.overlay.innerHTML = '';
 }
 
+function renderStartMenu() {
+  if (menuMode == null || !MODE_INFO[menuMode]) menuMode = 'classic';
+  if (menuSize == null || !GRID_SIZES.includes(menuSize)) {
+    menuSize = GRID_SIZES.includes(S.settings.gridSize) ? S.settings.gridSize : 31;
+  }
+  const saved = loadSavedRun();
+  const dailyLock = menuMode === 'daily';
+  const shownSize = dailyLock ? DAILY_SIZE : menuSize;
+  el.overlay.innerHTML = `<div class="overlay"><div class="overlay-inner" role="dialog" aria-label="New game setup">`
+    + `<div class="overlay-title">QUADTRIS</div>`
+    + `<div class="overlay-sub">${MODE_INFO[menuMode].desc}</div>`
+    + `<div class="menu-row" role="group" aria-label="Game mode">`
+    + Object.keys(MODE_INFO).map(m =>
+        `<button class="pick-btn mono${m === menuMode ? ' sel' : ''}" data-mode="${m}">${MODE_INFO[m].label}</button>`).join('')
+    + `</div>`
+    + `<div class="menu-row" role="group" aria-label="Field size">`
+    + GRID_SIZES.map(sz =>
+        `<button class="pick-btn mono${sz === shownSize ? ' sel' : ''}" data-size="${sz}"${dailyLock ? ' disabled' : ''}>${sz}×${sz}</button>`).join('')
+    + `</div>`
+    + `<button class="overlay-btn" id="q-start">START</button>`
+    + (saved
+        ? `<button class="overlay-btn" id="q-resume-run" style="background:var(--bg-3);color:var(--fg);">RESUME RUN · ${MODE_INFO[saved.mode].label} ${saved.size}×${saved.size} · ${saved.score} pts</button>`
+        : '')
+    + `</div></div>`;
+  el.overlay.querySelectorAll('[data-mode]').forEach(b =>
+    b.addEventListener('click', () => { menuMode = b.dataset.mode; renderOverlay(); }));
+  el.overlay.querySelectorAll('[data-size]').forEach(b =>
+    b.addEventListener('click', () => { menuSize = Number(b.dataset.size); renderOverlay(); }));
+  document.getElementById('q-start').addEventListener('click', () => startNewRun(shownSize, menuMode));
+  const res = document.getElementById('q-resume-run');
+  if (res) res.addEventListener('click', () => {
+    const run = loadSavedRun();
+    if (run) resumeRun(run);
+  });
+  const sb = document.getElementById('q-start');
+  if (sb && !el.overlay.contains(document.activeElement)) sb.focus();
+}
+
+function renderPaused() {
+  el.overlay.innerHTML = `<div class="overlay"><div class="overlay-inner" role="dialog" aria-label="Paused">`
+    + `<div class="overlay-title">PAUSED</div>`
+    + `<div class="overlay-sub">P or the pause button resumes</div>`
+    + `<button class="overlay-btn" id="q-resume-btn">RESUME</button>`
+    + `<div class="menu-row" style="margin-top:4px;">`
+    + `<button class="pick-btn mono" id="q-pause-restart">RESTART</button>`
+    + `<button class="pick-btn mono" id="q-pause-menu">MENU</button>`
+    + `</div></div></div>`;
+  document.getElementById('q-resume-btn').addEventListener('click', togglePause);
+  document.getElementById('q-pause-restart').addEventListener('click', restart);
+  document.getElementById('q-pause-menu').addEventListener('click', backToMenu);
+  const rb = document.getElementById('q-resume-btn');
+  if (rb && !el.overlay.contains(document.activeElement)) rb.focus();
+}
+
+function renderGameOver() {
+  const st = S.stats;
+  const causeTxt = S.winner ? `all ${SPRINT_GOAL} rings cleared` :
+    S.deathCause === 'disconnect' ? 'DISCONNECTED FROM CORE — the piece locked without touching the structure'
+    : S.deathCause === 'wall' ? 'HIT THE WALL — the piece locked partly beyond the board edge'
+    : '';
+  const best = getBest();
+  const top = loadJSON('quadtris.top10', []);
+  const rows = top.map((t, i) =>
+    `<tr><td>${i + 1}</td><td>${t.score}</td><td>${t.rings}</td><td>${t.size}</td><td>${MODE_INFO[t.mode] ? MODE_INFO[t.mode].label : t.mode}</td><td>${t.date}</td></tr>`).join('');
+  el.overlay.innerHTML = `<div class="overlay"><div class="overlay-inner" role="alertdialog" aria-label="${S.winner ? 'Sprint complete' : 'Game over'}">`
+    + `<div class="overlay-title">${S.winner ? 'SPRINT COMPLETE' : 'GAME OVER'}</div>`
+    + (causeTxt ? `<div class="overlay-sub" style="color:${S.winner ? 'var(--accent)' : 'var(--warn)'};max-width:340px;">${causeTxt}</div>` : '')
+    + (S.newBest ? `<div class="overlay-sub" style="color:var(--accent);">★ NEW BEST</div>` : '')
+    + `<div class="go-stats mono">`
+    + `<span class="k">SCORE</span><span class="v">${S.score}</span>`
+    + `<span class="k">RINGS</span><span class="v">${S.ringsCleared}</span>`
+    + (best ? `<span class="k">BEST</span><span class="v">${S.mode === 'sprint' ? fmtTime(best.timeMs) : best.score}</span>` : '')
+    + `<span class="k">TIME</span><span class="v">${fmtTime(S.elapsedMs)}</span>`
+    + `<span class="k">PIECES</span><span class="v">${st.pieces}</span>`
+    + `<span class="k">HOLDS</span><span class="v">${st.holds}</span>`
+    + `<span class="k">BOMBS USED</span><span class="v">${st.bombsUsed}</span>`
+    + `<span class="k">LONGEST CHAIN</span><span class="v">${st.maxChain}</span>`
+    + `</div>`
+    + (rows ? `<div class="overlay-sub" style="margin-top:6px;">TOP 10</div>`
+      + `<table class="top10 mono"><tr><th></th><th>score</th><th>rings</th><th>size</th><th>mode</th><th>date</th></tr>${rows}</table>` : '')
+    + `<div class="menu-row" style="margin-top:8px;">`
+    + `<button class="overlay-btn" id="q-go-restart" style="margin-top:0;">RESTART</button>`
+    + `<button class="overlay-btn" id="q-go-menu" style="margin-top:0;background:var(--bg-3);color:var(--fg);">MENU</button>`
+    + (S.mode === 'daily'
+        ? `<button class="overlay-btn" id="q-go-share" style="margin-top:0;background:var(--bg-3);color:var(--fg);">COPY RESULT</button>`
+        : '')
+    + `</div>`
+    + (S.mode !== 'daily'
+        ? `<div class="menu-row">`
+          + GRID_SIZES.map(sz => `<button class="pick-btn mono${sz === SIZE ? ' sel' : ''}" data-gsize="${sz}">${sz}×${sz}</button>`).join('')
+          + `</div><div class="pick-sub">restart at a different size</div>`
+        : '')
+    + `</div></div>`;
+  document.getElementById('q-go-restart').addEventListener('click', restart);
+  document.getElementById('q-go-menu').addEventListener('click', backToMenu);
+  const share = document.getElementById('q-go-share');
+  if (share) share.addEventListener('click', () => {
+    const txt = `Quadtris Daily ${todayStr()} · ${S.score} pts · ${S.ringsCleared} rings`;
+    if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => { share.textContent = 'COPIED!'; }, () => {});
+  });
+  el.overlay.querySelectorAll('[data-gsize]').forEach(b =>
+    b.addEventListener('click', () => startNewRun(Number(b.dataset.gsize), S.mode)));
+  const rb = document.getElementById('q-go-restart');
+  if (rb && !el.overlay.contains(document.activeElement)) rb.focus();
+}
+
+// --- main render --------------------------------------------------------------
 function update() {
+  if (!el.score) return;
   el.score.textContent = String(S.score).padStart(6, '0');
   el.rings.textContent = String(S.ringsCleared).padStart(2, '0');
   el.level.textContent = String(S.level).padStart(2, '0');
+  const mult = SPEED_MULT[S.settings.speed] || 1;
+  el.scoreMult.textContent = mult !== 1 ? ` ×${mult}` : '';
+  const best = getBest();
+  el.best.textContent = S.mode === 'sprint'
+    ? (best ? fmtTime(best.timeMs) : '—')
+    : (best ? String(best.score).padStart(6, '0') : '—');
+  el.timeWrap.style.display = S.mode === 'sprint' ? '' : 'none';
+  if (S.mode === 'sprint') el.time.textContent = fmtTime(S.elapsedMs);
   el.pauseLabel.textContent = S.paused ? 'RESUME' : 'PAUSE';
-  el.bombLabel.innerHTML = `BOMB &times;${S.bombs}`;
+  el.bombLabel.textContent = `BOMB ×${S.bombs}`;
   el.bombBtn.style.opacity = S.bombs > 0 ? '1' : '0.4';
+  const prog = ((S.ringsCleared % BOMB_EVERY_RINGS) + BOMB_EVERY_RINGS) % BOMB_EVERY_RINGS;
+  el.bombPips.textContent = '●'.repeat(prog) + '○'.repeat(BOMB_EVERY_RINGS - prog);
   if (el.touchPauseLabel) el.touchPauseLabel.textContent = S.paused ? 'RESUME' : 'PAUSE';
-  if (el.touchBombLabel) el.touchBombLabel.innerHTML = `BOMB &times;${S.bombs}`;
+  if (el.touchBombLabel) el.touchBombLabel.textContent = `BOMB ×${S.bombs} · ${prog}/${BOMB_EVERY_RINGS}`;
   renderNext();
   renderHold();
   renderCurrent();
-  renderRotWrap();
+  renderBoardSpin();
+  renderCells();
+  renderRingOutlines();
+  renderDanger();
   renderBombAim();
   renderPieces();
   renderOverlay();
-  scheduleLoop();
 }
 
 // ===================================================================
-// Wiring
+// Shell + wiring
 // ===================================================================
-// buildShell() rebuilds the DOM whenever the field size changes, so per-click
-// listeners on [data-act]/touch buttons are safely re-attached every call —
-// the old nodes (and their listeners) are discarded with them. Listeners
-// bound to `window` would instead pile up on every rebuild, so those are
-// guarded to attach exactly once (see keyListenersWired/pointerListenersWired).
-function wireEvents() {
-  document.querySelectorAll('[data-act]').forEach(btn => {
-    btn.addEventListener('click', () => action(btn.getAttribute('data-act')));
-  });
+function buildShell() {
+  const root = document.getElementById('root');
+  const PITCH = CELL_PX + GAP_PX;
+  const DW = 3 * PITCH;
+  const NAT = BOARD_PX + 18; // 2×8px padding + 2×1px border
+  const sizeOpts = GRID_SIZES.map(sz => `<option value="${sz}">${sz} × ${sz}</option>`).join('');
+  const speedOpts = Object.keys(SPEEDS).map(sp => `<option value="${sp}">${sp} · ×${SPEED_MULT[sp]}</option>`).join('');
+  if (restartArm) { clearTimeout(restartArm); restartArm = null; }
+  root.innerHTML = `
+  <div class="app">
+    <div class="frame">
+      <header class="header">
+        <div class="brand"><div>
+          <div class="wordmark">QUADTRIS</div>
+          <div class="tagline">center-out block puzzle</div>
+        </div></div>
+        <div class="mobile-hud">
+          <div class="mobile-hud-item"><span class="mobile-hud-label">HOLD</span><span class="mobile-hud-preview" id="q-hold-m">—</span></div>
+          <div class="mobile-hud-item"><span class="mobile-hud-label">NEXT</span><span class="mobile-hud-preview" id="q-next-m">—</span></div>
+          <button class="hud-btn" id="q-fs-m" aria-label="Toggle fullscreen">⛶</button>
+          <button class="hud-btn" id="q-tweaks-m" aria-label="Open settings">⚙</button>
+        </div>
+        <div class="stats">
+          <div class="stat"><div class="stat-label">SCORE<span class="score-mult mono" id="q-score-mult"></span></div><div class="mono stat-value" id="q-score">000000</div></div>
+          <div class="stat"><div class="stat-label">BEST</div><div class="mono stat-value" id="q-best">—</div></div>
+          <div class="stat"><div class="stat-label">RINGS</div><div class="mono stat-value" id="q-rings">00</div></div>
+          <div class="stat"><div class="stat-label">LEVEL</div><div class="mono stat-value" id="q-level">01</div></div>
+          <div class="stat" id="q-time-wrap" style="display:none;"><div class="stat-label">TIME</div><div class="mono stat-value" id="q-time">0:00.0</div></div>
+        </div>
+      </header>
+      <div class="middle">
+        <aside class="rail">
+          <div class="panel"><div class="panel-title">NEXT</div><div class="panel-body">
+            <div class="preview-box" id="q-next"></div>
+            <div class="ctrl-row"><span class="kicker">FROM</span><span class="from-val mono">NORTH ↓</span></div>
+          </div></div>
+          <div class="panel"><div class="panel-title">HOLD · C</div><div class="panel-body">
+            <div class="preview-box" id="q-hold"></div>
+          </div></div>
+          <div class="panel"><div class="panel-title">CONTROLS</div><div class="controls">
+            <div class="ctrl-row"><span class="ctrl-k">Move</span><span class="ctrl-v mono">← →</span></div>
+            <div class="ctrl-row"><span class="ctrl-k">Rotate piece</span><span class="ctrl-v mono">↑ / Z</span></div>
+            <div class="ctrl-row"><span class="ctrl-k">Soft drop · lock</span><span class="ctrl-v mono">↓</span></div>
+            <div class="ctrl-row"><span class="ctrl-k">Hard drop</span><span class="ctrl-v mono">SPACE</span></div>
+            <div class="ctrl-row"><span class="ctrl-k">Hold</span><span class="ctrl-v mono">C</span></div>
+            <div class="ctrl-row"><span class="ctrl-k">Column bomb</span><span class="ctrl-v mono">B</span></div>
+            <div class="ctrl-row"><span class="ctrl-k">Spin board</span><span class="ctrl-v mono">E / R</span></div>
+            <div class="ctrl-row"><span class="ctrl-k">Pause</span><span class="ctrl-v mono">P</span></div>
+          </div></div>
+        </aside>
+        <main class="board-outer" id="q-board-outer">
+          <div id="q-scale" style="position:relative;width:${NAT}px;height:${NAT}px;flex:none;">
+            <div id="q-board-wrap" style="position:relative;width:${NAT}px;height:${NAT}px;">
+              <div class="board" style="width:${NAT}px;height:${NAT}px;">
+                <div id="q-bg" style="${cellGridCSS(false)}"></div>
+                <div id="q-rotwrap" style="position:absolute;top:8px;left:8px;width:${BOARD_PX}px;height:${BOARD_PX}px;"></div>
+                <div id="q-bombaim" style="position:absolute;top:8px;left:8px;width:${BOARD_PX}px;height:${BOARD_PX}px;pointer-events:none;"></div>
+                <div id="q-collapse" style="position:absolute;top:8px;left:8px;width:${BOARD_PX}px;height:${BOARD_PX}px;pointer-events:none;"></div>
+                <div id="q-pieces" style="${cellGridCSS(false)}pointer-events:none;"></div>
+              </div>
+              <div class="danger-strip" id="q-danger-n" style="left:9px;top:9px;width:${BOARD_PX}px;height:${DW}px;background:linear-gradient(to bottom, oklch(0.70 0.17 30 / 0.30), transparent);"></div>
+              <div class="danger-strip" id="q-danger-s" style="left:9px;top:${9 + BOARD_PX - DW}px;width:${BOARD_PX}px;height:${DW}px;background:linear-gradient(to top, oklch(0.70 0.17 30 / 0.30), transparent);"></div>
+              <div class="danger-strip" id="q-danger-w" style="left:9px;top:9px;width:${DW}px;height:${BOARD_PX}px;background:linear-gradient(to right, oklch(0.70 0.17 30 / 0.30), transparent);"></div>
+              <div class="danger-strip" id="q-danger-e" style="left:${9 + BOARD_PX - DW}px;top:9px;width:${DW}px;height:${BOARD_PX}px;background:linear-gradient(to left, oklch(0.70 0.17 30 / 0.30), transparent);"></div>
+              <div class="banner mono" id="q-banner" aria-hidden="true"></div>
+              <div id="q-overlay"></div>
+            </div>
+          </div>
+        </main>
+        <aside class="rail">
+          <div class="panel"><div class="panel-title">CURRENT</div><div class="panel-body" id="q-current"></div></div>
+          <div class="panel"><div class="panel-title">ACTIONS</div><div class="actions-col">
+            <button class="big-btn" id="q-bomb-btn" aria-label="Column bomb"><span class="big-btn-label" id="q-bomb-label">BOMB ×3</span><span class="big-btn-sub mono">B · <span id="q-bomb-pips">○○○○○</span></span></button>
+            <button class="big-btn" id="q-hold-btn" aria-label="Hold piece"><span class="big-btn-label">HOLD</span><span class="big-btn-sub mono">C</span></button>
+            <button class="big-btn" id="q-spinccw-btn" aria-label="Spin board counterclockwise"><span class="big-btn-label">SPIN ⟲</span><span class="big-btn-sub mono">E · −2 pts</span></button>
+            <button class="big-btn" id="q-spincw-btn" aria-label="Spin board clockwise"><span class="big-btn-label">SPIN ⟳</span><span class="big-btn-sub mono">R · −2 pts</span></button>
+            <button class="big-btn" id="q-pause-btn" aria-label="Pause or resume"><span class="big-btn-label" id="q-pause-label">PAUSE</span><span class="big-btn-sub mono">P</span></button>
+            <button class="big-btn" id="q-restart-btn" aria-label="Restart run"><span class="big-btn-label" id="q-restart-label">RESTART</span><span class="big-btn-sub mono">tap twice</span></button>
+          </div></div>
+          <div class="panel" id="q-hint-panel"><div class="panel-title">HOW IT WORKS</div><div class="hint">
+            Pieces fall toward the golden <strong>core</strong>. Complete a full
+            <strong>ring</strong> around it to clear it — everything left then
+            collapses inward and can <strong>cascade</strong>. A piece that locks
+            without touching the structure (or past the wall)
+            <strong>ends the run</strong>; a
+            <strong style="color:var(--warn);">red ghost</strong> warns you first.
+          </div></div>
+        </aside>
+        <div class="touch-controls" id="q-touch">
+          <div class="touch-row">
+            <button class="touch-btn small" id="q-t-hold">HOLD</button>
+            <button class="touch-btn small" id="q-t-bomb"><span id="q-touch-bomb-label">BOMB ×3</span></button>
+            <button class="touch-btn small" id="q-t-pause"><span id="q-touch-pause-label">PAUSE</span></button>
+          </div>
+          <div class="touch-row">
+            <button class="touch-btn" id="q-t-left" aria-label="Move left">◀</button>
+            <button class="touch-btn" id="q-t-rotccw" aria-label="Rotate counterclockwise">⟲</button>
+            <button class="touch-btn" id="q-t-rotcw" aria-label="Rotate clockwise">⟳</button>
+            <button class="touch-btn" id="q-t-right" aria-label="Move right">▶</button>
+          </div>
+          <div class="touch-row">
+            <button class="touch-btn small" id="q-t-boardccw" aria-label="Spin board counterclockwise">◐ SPIN</button>
+            <button class="touch-btn" id="q-t-down" aria-label="Soft drop">▼</button>
+            <button class="touch-btn small" id="q-t-drop" aria-label="Hard drop">DROP</button>
+            <button class="touch-btn small" id="q-t-boardcw" aria-label="Spin board clockwise">SPIN ◑</button>
+          </div>
+        </div>
+      </div>
+      <footer class="footer">
+        <div class="footer-cell">quadtris · rings collapse inward</div>
+        <div class="footer-group">
+          <button class="footer-btn" id="q-fs">⛶ fullscreen</button>
+          <button class="footer-btn" id="q-tweaks">⚙ tweaks</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+  <div class="settings" id="q-settings" role="dialog" aria-label="Settings">
+    <div class="settings-hd"><b>Tweaks</b><button class="settings-x" id="set-close" aria-label="Close settings">✕</button></div>
+    <div class="set-sect">Game</div>
+    <div class="set-row"><label for="set-speed">Speed · score ×</label><select class="set-field" id="set-speed">${speedOpts}</select></div>
+    <div class="set-row"><label for="set-grid">Field size</label><select class="set-field" id="set-grid">${sizeOpts}</select></div>
+    <div class="set-row"><label for="set-sdm">Soft drop</label><input type="range" id="set-sdm" min="2" max="12" step="1"><span class="val mono" id="set-sdm-val"></span></div>
+    <div class="set-sect">Interface</div>
+    <div class="set-row"><label>Ring outlines</label><button class="toggle" id="set-rings" role="switch"><i></i></button></div>
+    <div class="set-row"><label>How-it-works panel</label><button class="toggle" id="set-hint" role="switch"><i></i></button></div>
+    <div class="set-row"><label for="set-touch">Touch controls</label><select class="set-field" id="set-touch"><option value="both">Buttons + swipe</option><option value="buttons">Buttons only</option><option value="gestures">Swipe only</option></select></div>
+    <div class="set-row"><label>Fullscreen</label><button class="set-field" id="set-fs">toggle ⛶</button></div>
+  </div>
+  <div class="sr-only" aria-live="polite" id="q-live"></div>`;
 
-  if (keyListenersWired) return;
-  keyListenersWired = true;
-  window.addEventListener('keydown', (e) => {
-    if (e.repeat && (e.key === 'ArrowUp' || e.key === ' ')) return;
-    const k = e.key;
-    if (k === 'ArrowLeft')       { action('left'); e.preventDefault(); }
-    else if (k === 'ArrowRight') { action('right'); e.preventDefault(); }
-    else if (k === 'ArrowUp')    { action('rotCW'); e.preventDefault(); }
-    else if (k === 'z' || k === 'Z') action('rotCCW');
-    else if (k === 'ArrowDown')  { if (!S.softDrop) { S.softDrop = true; scheduleLoop(); } e.preventDefault(); }
-    else if (k === ' ')          { action('hardDrop'); e.preventDefault(); }
-    else if (k === 'r' || k === 'R') action('boardCW');
-    else if (k === 'e' || k === 'E') action('boardCCW');
-    else if (k === 'b' || k === 'B') action('bomb');
-    else if (k === 'c' || k === 'C') action('hold');
-    else if (k === 'p' || k === 'P') action('pause');
-    else if (k === 'Enter' && S.gameOver) restart();
-  });
-  window.addEventListener('keyup', (e) => {
-    if (e.key === 'ArrowDown') { S.softDrop = false; scheduleLoop(); }
-  });
+  const $ = (id) => document.getElementById(id);
+  el.score = $('q-score'); el.scoreMult = $('q-score-mult'); el.best = $('q-best');
+  el.rings = $('q-rings'); el.level = $('q-level');
+  el.time = $('q-time'); el.timeWrap = $('q-time-wrap');
+  el.next = $('q-next'); el.hold = $('q-hold');
+  el.nextMobile = $('q-next-m'); el.holdMobile = $('q-hold-m');
+  el.current = $('q-current');
+  el.bg = $('q-bg'); el.rotwrap = $('q-rotwrap'); el.bombAim = $('q-bombaim');
+  el.collapse = $('q-collapse'); el.pieces = $('q-pieces');
+  el.overlay = $('q-overlay'); el.banner = $('q-banner'); el.live = $('q-live');
+  el.boardOuter = $('q-board-outer'); el.scale = $('q-scale');
+  el.pauseLabel = $('q-pause-label'); el.bombLabel = $('q-bomb-label');
+  el.bombPips = $('q-bomb-pips'); el.bombBtn = $('q-bomb-btn');
+  el.touchBombLabel = $('q-touch-bomb-label'); el.touchPauseLabel = $('q-touch-pause-label');
+  el.dangerN = $('q-danger-n'); el.dangerS = $('q-danger-s');
+  el.dangerW = $('q-danger-w'); el.dangerE = $('q-danger-e');
+
+  buildBackground();
+  buildBoardLayers();
+  bombAimLast = null;
+  overlayKey = null;
+  wireShell();
+  wireKeys();
+  observeScale();
+  applyTouchMode();
+  applyHint();
+  update();
 }
 
-// On-screen controls for touch devices. Left/right auto-repeat while held
-// (mirrors OS key-repeat on the keyboard) and the down button holds soft
-// drop for as long as it's pressed, like the ArrowDown key. Every other
-// touch button reuses the same [data-act] click wiring as the desktop
-// action buttons. Hold-repeat state lives at module scope (not a per-call
-// closure) so the one-time-wired pointerup/pointercancel safety net below
-// keeps working correctly after a rebuild (field-size change).
-function wireTouchControls() {
+function wireShell() {
+  const $ = (id) => document.getElementById(id);
+  $('q-bomb-btn').addEventListener('click', () => action('bomb'));
+  $('q-hold-btn').addEventListener('click', () => action('hold'));
+  $('q-spinccw-btn').addEventListener('click', () => action('boardCCW'));
+  $('q-spincw-btn').addEventListener('click', () => action('boardCW'));
+  $('q-pause-btn').addEventListener('click', () => action('pause'));
+  $('q-restart-btn').addEventListener('click', armRestart);
+  $('q-fs').addEventListener('click', toggleFullscreen);
+  $('q-fs-m').addEventListener('click', toggleFullscreen);
+  $('q-tweaks').addEventListener('click', toggleSettings);
+  $('q-tweaks-m').addEventListener('click', toggleSettings);
+  wireTouchControls();
+  wireSwipe();
+  wireSettings();
+}
+
+// Two taps within 2.5s: mid-run restarts shouldn't happen on a stray click.
+function armRestart() {
+  if (S.awaitingStart) return;
+  if (restartArm) {
+    clearTimeout(restartArm);
+    restartArm = null;
+    restart();
+    return;
+  }
+  const label = document.getElementById('q-restart-label');
+  if (label) label.textContent = 'SURE?';
+  restartArm = setTimeout(() => {
+    restartArm = null;
+    const l = document.getElementById('q-restart-label');
+    if (l) l.textContent = 'RESTART';
+  }, 2500);
+}
+
+function toggleSettings() {
+  document.getElementById('q-settings').classList.toggle('open');
+}
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) {
+    if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  } else if (document.documentElement.requestFullscreen) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+}
+
+function applyTouchMode() {
   const bar = document.getElementById('q-touch');
-  if (!bar) return;
-
-  const clearRepeat = () => { clearTimeout(touchHoldTimer); clearInterval(touchRepeatTimer); touchHoldTimer = touchRepeatTimer = null; };
-  const clearSoftDrop = () => { if (S.softDrop) { S.softDrop = false; scheduleLoop(); } };
-
-  const attachRepeat = (id, kind) => {
-    const btn = document.getElementById(id);
-    if (!btn) return;
-    btn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      clearRepeat();
-      action(kind);
-      touchHoldTimer = setTimeout(() => { touchRepeatTimer = setInterval(() => action(kind), 60); }, 220);
-    });
-  };
-  attachRepeat('q-touch-left', 'left');
-  attachRepeat('q-touch-right', 'right');
-
-  const downBtn = document.getElementById('q-touch-down');
-  if (downBtn) {
-    downBtn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      if (!S.softDrop) { S.softDrop = true; scheduleLoop(); }
-    });
-  }
-
-  bar.addEventListener('contextmenu', (e) => e.preventDefault());
-
-  if (pointerListenersWired) return;
-  pointerListenersWired = true;
-  // Safety net: releasing a pointer anywhere stops whichever hold-to-repeat
-  // action is active, so a finger sliding off a button can't leave it stuck.
-  window.addEventListener('pointerup', () => { clearRepeat(); clearSoftDrop(); });
-  window.addEventListener('pointercancel', () => { clearRepeat(); clearSoftDrop(); });
+  if (bar) bar.style.display = S.settings.touchMode === 'gestures' ? 'none' : '';
 }
-
-function observeScale() {
-  if (scaleObserver) { scaleObserver.disconnect(); scaleObserver = null; }
-  if (scaleResizeHandler) { window.removeEventListener('resize', scaleResizeHandler); scaleResizeHandler = null; }
-  const apply = (w, h) => {
-    const s = Math.min(1, w / NATIVE, h / NATIVE);
-    el.scale.style.transform = `scale(${s})`;
-  };
-  if (typeof ResizeObserver !== 'undefined') {
-    scaleObserver = new ResizeObserver(entries => {
-      const { width, height } = entries[0].contentRect;
-      apply(width, height);
-    });
-    scaleObserver.observe(el.boardOuter);
-  } else {
-    scaleResizeHandler = () => apply(el.boardOuter.clientWidth, el.boardOuter.clientHeight);
-    window.addEventListener('resize', scaleResizeHandler);
-    scaleResizeHandler();
-  }
+function applyHint() {
+  const p = document.getElementById('q-hint-panel');
+  if (p) p.style.display = S.settings.showHint ? '' : 'none';
+}
+function setToggle(btn, on) {
+  btn.dataset.on = on ? '1' : '0';
+  btn.setAttribute('aria-checked', on ? 'true' : 'false');
 }
 
 function wireSettings() {
-  const panel = document.getElementById('q-settings');
-  const speed = document.getElementById('set-speed');
-  const soft = document.getElementById('set-softdrop');
-  const softVal = document.getElementById('set-softdrop-val');
-  const hint = document.getElementById('set-hint');
-  const rings = document.getElementById('set-rings');
-  const gridSize = document.getElementById('set-gridsize');
-
-  const syncControls = () => {
-    speed.value = S.settings.speed;
-    soft.value = S.settings.softDropMult;
-    softVal.textContent = S.settings.softDropMult;
-    hint.setAttribute('data-on', S.settings.showHint ? '1' : '0');
-    rings.setAttribute('data-on', S.settings.showRings ? '1' : '0');
-    gridSize.value = String(SIZE);
-  };
-  const commit = () => { saveSettings(S.settings); syncControls(); update(); };
-
-  document.getElementById('q-open-tweaks').addEventListener('click', () => panel.classList.toggle('open'));
-  document.getElementById('q-settings-x').addEventListener('click', () => panel.classList.remove('open'));
+  const $ = (id) => document.getElementById(id);
+  const speed = $('set-speed'), grid = $('set-grid'), sdm = $('set-sdm'), sdmVal = $('set-sdm-val');
+  const rings = $('set-rings'), hint = $('set-hint'), touch = $('set-touch');
+  speed.value = S.settings.speed;
+  grid.value = String(S.settings.gridSize);
+  sdm.value = String(S.settings.softDropMult);
+  sdmVal.textContent = `×${S.settings.softDropMult}`;
+  setToggle(rings, S.settings.showRings);
+  setToggle(hint, S.settings.showHint);
+  touch.value = S.settings.touchMode;
+  const commit = () => { saveSettings(S.settings); update(); };
   speed.addEventListener('change', () => { S.settings.speed = speed.value; commit(); });
-  soft.addEventListener('input', () => { S.settings.softDropMult = Number(soft.value); commit(); });
-  hint.addEventListener('click', () => { S.settings.showHint = !S.settings.showHint; commit(); });
-  rings.addEventListener('click', () => { S.settings.showRings = !S.settings.showRings; commit(); });
-  gridSize.addEventListener('change', () => {
-    const sz = Number(gridSize.value);
-    if (sz !== SIZE) startNewRun(sz);
+  grid.addEventListener('change', () => {
+    const sz = Number(grid.value);
+    if (S.awaitingStart) { menuSize = sz; S.settings.gridSize = sz; commit(); return; }
+    startNewRun(sz, S.mode === 'daily' ? 'classic' : S.mode);
   });
+  sdm.addEventListener('input', () => {
+    S.settings.softDropMult = Number(sdm.value);
+    sdmVal.textContent = `×${S.settings.softDropMult}`;
+    saveSettings(S.settings);
+  });
+  rings.addEventListener('click', () => { S.settings.showRings = !S.settings.showRings; setToggle(rings, S.settings.showRings); commit(); });
+  hint.addEventListener('click', () => { S.settings.showHint = !S.settings.showHint; setToggle(hint, S.settings.showHint); applyHint(); commit(); });
+  touch.addEventListener('change', () => { S.settings.touchMode = touch.value; applyTouchMode(); commit(); });
+  $('set-fs').addEventListener('click', toggleFullscreen);
+  $('set-close').addEventListener('click', toggleSettings);
+}
 
-  syncControls();
+// --- keyboard (wired once; DAS handled per-frame) ---------------------------
+function wireKeys() {
+  if (keyListenersWired) return;
+  keyListenersWired = true;
+  window.addEventListener('keydown', (e) => {
+    const k = e.key;
+    if (k === 'ArrowLeft') {
+      e.preventDefault();
+      if (!e.repeat) { dasHeld.left = true; dasStart(-1); }
+    } else if (k === 'ArrowRight') {
+      e.preventDefault();
+      if (!e.repeat) { dasHeld.right = true; dasStart(1); }
+    } else if (k === 'ArrowUp') {
+      e.preventDefault();
+      if (!e.repeat) action('rotCW');
+    } else if (k === 'z' || k === 'Z') {
+      if (!e.repeat) action('rotCCW');
+    } else if (k === 'ArrowDown') {
+      e.preventDefault();
+      if (!e.repeat) action('down');
+    } else if (k === ' ') {
+      e.preventDefault();
+      if (!e.repeat) action('hardDrop');
+    } else if (k === 'r' || k === 'R') {
+      if (!e.repeat) action('boardCW');
+    } else if (k === 'e' || k === 'E') {
+      if (!e.repeat) action('boardCCW');
+    } else if (k === 'b' || k === 'B') {
+      if (!e.repeat) action('bomb');
+    } else if (k === 'c' || k === 'C') {
+      if (!e.repeat) action('hold');
+    } else if (k === 'p' || k === 'P') {
+      if (!e.repeat) action('pause');
+    } else if (k === 'Enter') {
+      if (S.gameOver && !S.awaitingStart) restart();
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowDown') S.softDrop = false;
+    else if (e.key === 'ArrowLeft') { dasHeld.left = false; if (dasDir === -1) dasStop(); }
+    else if (e.key === 'ArrowRight') { dasHeld.right = false; if (dasDir === 1) dasStop(); }
+  });
+}
+
+// --- touch buttons -----------------------------------------------------------
+function attachRepeat(btn, fn) {
+  const start = (e) => {
+    e.preventDefault();
+    if (btn.setPointerCapture) { try { btn.setPointerCapture(e.pointerId); } catch (err) {} }
+    fn();
+    clearTimeout(touchHoldTimer);
+    clearInterval(touchRepeatTimer);
+    touchHoldTimer = setTimeout(() => { touchRepeatTimer = setInterval(fn, 60); }, 220);
+  };
+  const stop = () => { clearTimeout(touchHoldTimer); clearInterval(touchRepeatTimer); };
+  btn.addEventListener('pointerdown', start);
+  btn.addEventListener('pointerup', stop);
+  btn.addEventListener('pointercancel', stop);
+  btn.addEventListener('pointerleave', stop);
+}
+
+function wireTouchControls() {
+  const $ = (id) => document.getElementById(id);
+  attachRepeat($('q-t-left'), () => action('left'));
+  attachRepeat($('q-t-right'), () => action('right'));
+  attachRepeat($('q-t-down'), () => {
+    if (!S.piece || S.paused || S.gameOver || S.rotating || S.collapsing || S.flash) return;
+    if (S.grounded) { lockAndClear(S.piece); return; } // tap while landed = lock now
+    gestureSoftStep();
+  });
+  const tap = (id, fn) => $(id).addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); });
+  tap('q-t-rotccw', () => action('rotCCW'));
+  tap('q-t-rotcw', () => action('rotCW'));
+  tap('q-t-drop', () => action('hardDrop'));
+  tap('q-t-hold', () => action('hold'));
+  tap('q-t-bomb', () => action('bomb'));
+  tap('q-t-pause', () => action('pause'));
+  tap('q-t-boardccw', () => action('boardCCW'));
+  tap('q-t-boardcw', () => action('boardCW'));
+}
+
+// --- swipe gestures on the board ----------------------------------------------
+// Drag horizontally to move cell-by-cell, drag down to soft drop, flick down
+// to hard drop, tap to rotate. Disabled via "Buttons only" in Tweaks.
+let sw = null;
+function wireSwipe() {
+  const area = el.boardOuter;
+  area.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch') return;
+    if (S.settings.touchMode === 'buttons') return;
+    if (S.awaitingStart || S.gameOver || S.paused || !S.piece) return;
+    if (e.target.closest('button')) return;
+    const rect = el.pieces.getBoundingClientRect();
+    sw = {
+      id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: performance.now(),
+      pitch: Math.max(8, rect.width / SIZE), axis: null, sx: 0, sy: 0,
+    };
+    if (area.setPointerCapture) { try { area.setPointerCapture(e.pointerId); } catch (err) {} }
+  });
+  area.addEventListener('pointermove', (e) => {
+    if (!sw || e.pointerId !== sw.id) return;
+    const dx = e.clientX - sw.x0, dy = e.clientY - sw.y0;
+    if (!sw.axis) {
+      if (Math.abs(dx) > sw.pitch * 0.6) sw.axis = 'x';
+      else if (dy > sw.pitch * 0.6) sw.axis = 'y';
+      else return;
+    }
+    if (sw.axis === 'x') {
+      const steps = Math.trunc(dx / sw.pitch) - sw.sx;
+      for (let i = 0; i < Math.abs(steps); i++) action(steps > 0 ? 'right' : 'left');
+      sw.sx += steps;
+    } else {
+      const steps = Math.trunc(dy / sw.pitch) - sw.sy;
+      for (let i = 0; i < steps; i++) gestureSoftStep();
+      if (steps > 0) sw.sy += steps;
+    }
+  });
+  const end = (e) => {
+    if (!sw || e.pointerId !== sw.id) return;
+    const dt = performance.now() - sw.t0;
+    const dx = e.clientX - sw.x0, dy = e.clientY - sw.y0;
+    if (!sw.axis && dt < 300 && Math.abs(dx) < 10 && Math.abs(dy) < 10) action('rotCW');
+    else if (sw.axis === 'y' && dt < 260 && dy > sw.pitch * 1.8) action('hardDrop');
+    sw = null;
+  };
+  area.addEventListener('pointerup', end);
+  area.addEventListener('pointercancel', () => { sw = null; });
+}
+
+// --- board scaling -------------------------------------------------------------
+function fitBoard() {
+  if (!el.boardOuter || !el.scale) return;
+  const w = el.boardOuter.clientWidth - 8, h = el.boardOuter.clientHeight - 8;
+  if (w <= 0 || h <= 0) return;
+  const nat = BOARD_PX + 18;
+  const s = Math.max(0.2, Math.min(w / nat, h / nat, 1.6));
+  el.scale.style.transform = `scale(${s})`;
+}
+function observeScale() {
+  if (scaleObserver) scaleObserver.disconnect();
+  scaleObserver = new ResizeObserver(fitBoard);
+  scaleObserver.observe(el.boardOuter);
+  if (!scaleResizeHandler) {
+    scaleResizeHandler = () => fitBoard();
+    window.addEventListener('resize', scaleResizeHandler);
+  }
+  fitBoard();
+}
+
+// --- global one-time wiring ------------------------------------------------------
+function wireGlobal() {
+  if (globalWired) return;
+  globalWired = true;
+  // Auto-pause when the tab is hidden or the window loses focus: background
+  // tabs throttle timers erratically, and an unattended run shouldn't die.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && !S.paused && !S.gameOver && !S.awaitingStart) {
+      S.paused = true;
+      saveRun();
+      update();
+    }
+  });
+  window.addEventListener('blur', () => {
+    dasHeld.left = dasHeld.right = false;
+    dasDir = 0;
+    S.softDrop = false;
+    if (!S.paused && !S.gameOver && !S.awaitingStart) {
+      S.paused = true;
+      saveRun();
+      update();
+    }
+  });
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
 }
 
 // ===================================================================
-// Boot
+// Boot — build the shell and show the mode/size menu; the rAF loop idles
+// until a run starts.
 // ===================================================================
 configureGrid(GRID_SIZES.includes(S.settings.gridSize) ? S.settings.gridSize : 31);
 S.grid = emptyGrid();
 buildShell();
-update();
+wireGlobal();
+rafId = requestAnimationFrame(frame);
 </script>
 </body>
 </html>
